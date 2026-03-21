@@ -1,0 +1,281 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: weddings
+    // Fields:
+    //   - userId: string (required, immutable) - Owner UID
+    //   - partner1: string (required, 1-100 chars)
+    //   - partner2: string (required, 1-100 chars)
+    //   - date: string (optional, ISO date)
+    //   - budget: number (optional, positive)
+    //   - location: string (optional)
+    //   - createdAt: string (optional, ISO date)
+    //
+    // Collection: weddings/{weddingId}/guests
+    // Fields:
+    //   - weddingId: string (required)
+    //   - name: string (required, 1-100 chars)
+    //   - status: string (required, enum: invited, confirmed, declined)
+    //   - email: string (optional, email format)
+    //   - plusOne: bool (optional)
+    //
+    // Collection: weddings/{weddingId}/tasks
+    // Fields:
+    //   - weddingId: string (required)
+    //   - title: string (required, 1-200 chars)
+    //   - description: string (optional, 1-1000 chars)
+    //   - category: string (optional)
+    //   - dueDate: string (optional, ISO date)
+    //   - completed: bool (required)
+    //   - createdAt: string (optional)
+    //
+    // Collection: weddings/{weddingId}/budgetItems
+    // Fields:
+    //   - weddingId: string (required)
+    //   - category: string (required)
+    //   - name: string (required)
+    //   - estimated: number (required)
+    //   - paid: number (required)
+    //
+    // Collection: weddings/{weddingId}/favoriteVendors
+    // Fields:
+    //   - weddingId: string (required)
+    //   - vendorId: string (required)
+    //   - name: string (required)
+    //   - category: string (optional)
+    //   - address: string (optional)
+    //   - rating: number (optional)
+    //   - photo: string (optional)
+    //   - phone: string (optional)
+    //   - website: string (optional)
+    //
+    // Collection: weddings/{weddingId}/payments
+    // Fields:
+    //   - weddingId: string (required)
+    //   - budgetItemId: string (required)
+    //   - itemName: string (required)
+    //   - amount: number (required)
+    //   - date: string (required, ISO date)
+    //   - method: string (optional)
+    //
+    // Collection: posts
+    // Fields:
+    //   - userId: string (required, immutable)
+    //   - authorName: string (required)
+    //   - authorPhoto: string (optional)
+    //   - content: string (required, 1-2000 chars)
+    //   - createdAt: string (required, ISO date)
+    //
+    // Collection: users
+    // Fields:
+    //   - email: string (required)
+    //   - role: string (required, enum: admin, user)
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == "lucasadrianpulido@gmail.com" && 
+        request.auth.token.email_verified == true
+      );
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        isSuperAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isWeddingOwner(weddingId) {
+      return isAuthenticated() && (
+        isSuperAdmin() ||
+        (exists(/databases/$(database)/documents/weddings/$(weddingId)) && 
+         get(/databases/$(database)/documents/weddings/$(weddingId)).data.userId == request.auth.uid)
+      );
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    // Domain Validators
+    function isValidWedding(data) {
+      return hasOnlyAllowedFields(['userId', 'partner1', 'partner2', 'date', 'budget', 'location', 'createdAt']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+             data.partner1 is string && data.partner1.size() > 0 && data.partner1.size() <= 100 &&
+             data.partner2 is string && data.partner2.size() > 0 && data.partner2.size() <= 100 &&
+             (data.get('date', null) == null || (data.date is string && data.date.size() <= 50)) &&
+             (data.get('location', null) == null || (data.location is string && data.location.size() <= 500)) &&
+             (data.get('createdAt', null) == null || isValidDateString(data.createdAt)) &&
+             (data.get('budget', null) == null || (data.budget is number && data.budget >= 0));
+    }
+
+    function isValidGuest(data) {
+      return hasOnlyAllowedFields(['weddingId', 'name', 'status', 'email', 'plusOne']) &&
+             data.weddingId is string && data.weddingId.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.status in ['invited', 'confirmed', 'declined'] &&
+             (data.get('email', null) == null || (isValidEmail(data.email) && data.email.size() <= 100)) &&
+             (data.get('plusOne', null) == null || data.plusOne is bool);
+    }
+
+    function isValidTask(data) {
+      return hasOnlyAllowedFields(['weddingId', 'title', 'description', 'category', 'dueDate', 'completed', 'createdAt', 'priority']) &&
+             data.weddingId is string && data.weddingId.size() <= 128 &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.completed is bool &&
+             (data.get('priority', 'low') in ['low', 'medium', 'high']) &&
+             (data.get('description', null) == null || (data.description is string && data.description.size() <= 1000)) &&
+             (data.get('category', null) == null || (data.category is string && data.category.size() <= 100)) &&
+             (data.get('dueDate', null) == null || (data.dueDate is string && data.dueDate.size() <= 50)) &&
+             (data.get('createdAt', null) == null || isValidDateString(data.createdAt));
+    }
+
+    function isValidBudgetItem(data) {
+      return hasOnlyAllowedFields(['weddingId', 'category', 'name', 'estimated', 'paid']) &&
+             data.weddingId is string && data.weddingId.size() <= 128 &&
+             data.category is string && data.category.size() <= 100 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.estimated is number && data.estimated >= 0 &&
+             data.paid is number && data.paid >= 0;
+    }
+
+    function isValidPayment(data) {
+      return hasOnlyAllowedFields(['weddingId', 'budgetItemId', 'itemName', 'amount', 'date', 'method']) &&
+             data.weddingId is string && data.weddingId.size() <= 128 &&
+             data.budgetItemId is string && data.budgetItemId.size() <= 128 &&
+             data.itemName is string && data.itemName.size() > 0 && data.itemName.size() <= 200 &&
+             data.amount is number && data.amount >= 0 &&
+             isValidDateString(data.date) &&
+             (data.get('method', null) == null || (data.method is string && data.method.size() <= 100));
+    }
+
+    function isValidFavoriteVendor(data) {
+      return hasOnlyAllowedFields(['weddingId', 'vendorId', 'name', 'category', 'address', 'rating', 'photo', 'phone', 'website']) &&
+             data.weddingId is string && data.weddingId.size() <= 128 &&
+             data.vendorId is string && data.vendorId.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             (data.get('category', null) == null || (data.category is string && data.category.size() <= 100)) &&
+             (data.get('address', null) == null || (data.address is string && data.address.size() <= 500)) &&
+             (data.get('rating', null) == null || (data.rating is number && data.rating >= 0 && data.rating <= 5)) &&
+             (data.get('photo', null) == null || (data.photo is string && data.photo.size() <= 1000)) &&
+             (data.get('phone', null) == null || (data.phone is string && data.phone.size() <= 50)) &&
+             (data.get('website', null) == null || (data.website is string && data.website.size() <= 1000));
+    }
+
+    function isValidPost(data) {
+      return hasOnlyAllowedFields(['userId', 'authorName', 'authorPhoto', 'content', 'createdAt']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+             data.authorName is string && data.authorName.size() > 0 && data.authorName.size() <= 100 &&
+             (data.get('authorPhoto', null) == null || (data.authorPhoto is string && data.authorPhoto.size() <= 1000)) &&
+             data.content is string && data.content.size() > 0 && data.content.size() <= 2000 &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['email', 'role']) &&
+             data.email is string && isValidEmail(data.email) && data.email.size() <= 100 &&
+             data.role in ['admin', 'user'];
+    }
+
+    // Rules
+    match /weddings/{weddingId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      
+      allow create: if isAuthenticated() && 
+                    isValidWedding(request.resource.data) &&
+                    (request.resource.data.userId == request.auth.uid || isAdmin());
+      
+      allow update: if isAuthenticated() && 
+                    (resource.data.userId == request.auth.uid || isAdmin()) && 
+                    isValidWedding(request.resource.data) &&
+                    request.resource.data.userId == resource.data.userId;
+                    
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+
+      match /guests/{guestId} {
+        allow read: if isWeddingOwner(weddingId);
+        allow create: if isWeddingOwner(weddingId) && isValidGuest(request.resource.data);
+        allow update: if isWeddingOwner(weddingId) && isValidGuest(request.resource.data);
+        allow delete: if isWeddingOwner(weddingId);
+      }
+
+      match /tasks/{taskId} {
+        allow read: if isWeddingOwner(weddingId);
+        allow create: if isWeddingOwner(weddingId) && isValidTask(request.resource.data);
+        allow update: if isWeddingOwner(weddingId) && isValidTask(request.resource.data);
+        allow delete: if isWeddingOwner(weddingId);
+      }
+
+      match /budgetItems/{budgetItemId} {
+        allow read: if isWeddingOwner(weddingId);
+        allow create: if isWeddingOwner(weddingId) && isValidBudgetItem(request.resource.data);
+        allow update: if isWeddingOwner(weddingId) && isValidBudgetItem(request.resource.data);
+        allow delete: if isWeddingOwner(weddingId);
+      }
+
+      match /payments/{paymentId} {
+        allow read: if isWeddingOwner(weddingId);
+        allow create: if isWeddingOwner(weddingId) && isValidPayment(request.resource.data);
+        allow update: if isWeddingOwner(weddingId) && isValidPayment(request.resource.data);
+        allow delete: if isWeddingOwner(weddingId);
+      }
+
+      match /favoriteVendors/{favoriteVendorId} {
+        allow read: if isWeddingOwner(weddingId);
+        allow create: if isWeddingOwner(weddingId) && isValidFavoriteVendor(request.resource.data);
+        allow update: if isWeddingOwner(weddingId) && isValidFavoriteVendor(request.resource.data);
+        allow delete: if isWeddingOwner(weddingId);
+      }
+    }
+
+    match /posts/{postId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+                    request.resource.data.userId == request.auth.uid &&
+                    isValidPost(request.resource.data);
+      allow update: if isAuthenticated() && 
+                    (resource.data.userId == request.auth.uid || isAdmin()) &&
+                    request.resource.data.userId == resource.data.userId &&
+                    isValidPost(request.resource.data);
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && 
+                    (isOwner(userId) && request.resource.data.role == 'user' || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) &&
+                    (isOwner(userId) && request.resource.data.role == resource.data.role || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /test/{docId} {
+      allow read: if true;
+    }
+  }
+}

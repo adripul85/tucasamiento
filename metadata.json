@@ -1,0 +1,7 @@
+{
+  "name": "Tu Casamiento",
+  "description": "Tu planificador de bodas personal. Gestiona invitados, presupuesto, tareas y encuentra los mejores proveedores.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

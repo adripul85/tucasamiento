@@ -1,0 +1,151 @@
+{
+  "entities": {
+    "Wedding": {
+      "title": "Wedding",
+      "description": "Core wedding details and ownership.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The UID of the wedding owner." },
+        "partner1": { "type": "string", "description": "Name of the first partner." },
+        "partner2": { "type": "string", "description": "Name of the second partner." },
+        "date": { "type": "string", "format": "date", "description": "Wedding date." },
+        "location": { "type": "string", "description": "Wedding location." },
+        "budget": { "type": "number", "description": "Total wedding budget." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp." }
+      },
+      "required": ["userId", "partner1", "partner2"]
+    },
+    "Guest": {
+      "title": "Guest",
+      "description": "A guest invited to the wedding.",
+      "type": "object",
+      "properties": {
+        "weddingId": { "type": "string", "description": "Reference to the wedding." },
+        "name": { "type": "string", "description": "Guest name." },
+        "email": { "type": "string", "format": "email", "description": "Guest email." },
+        "status": { "type": "string", "enum": ["invited", "confirmed", "declined"], "description": "RSVP status." },
+        "plusOne": { "type": "boolean", "description": "Whether the guest has a plus one." }
+      },
+      "required": ["weddingId", "name", "status"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "A planning task for the wedding.",
+      "type": "object",
+      "properties": {
+        "weddingId": { "type": "string", "description": "Reference to the wedding." },
+        "title": { "type": "string", "description": "Task title." },
+        "description": { "type": "string", "description": "Task details." },
+        "category": { "type": "string", "description": "Task category." },
+        "dueDate": { "type": "string", "format": "date", "description": "Task deadline." },
+        "completed": { "type": "boolean", "description": "Completion status." },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"], "description": "Task priority." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp." }
+      },
+      "required": ["weddingId", "title", "completed"]
+    },
+    "BudgetItem": {
+      "title": "BudgetItem",
+      "description": "An expense item in the wedding budget.",
+      "type": "object",
+      "properties": {
+        "weddingId": { "type": "string", "description": "Reference to the wedding." },
+        "category": { "type": "string", "description": "Expense category." },
+        "name": { "type": "string", "description": "Item name." },
+        "estimated": { "type": "number", "description": "Estimated cost." },
+        "paid": { "type": "number", "description": "Amount already paid." }
+      },
+      "required": ["weddingId", "category", "name", "estimated", "paid"]
+    },
+    "FavoriteVendor": {
+      "title": "FavoriteVendor",
+      "description": "A vendor saved by the user.",
+      "type": "object",
+      "properties": {
+        "weddingId": { "type": "string", "description": "Reference to the wedding." },
+        "vendorId": { "type": "string", "description": "External vendor ID." },
+        "name": { "type": "string", "description": "Vendor name." },
+        "category": { "type": "string", "description": "Vendor category." },
+        "address": { "type": "string", "description": "Vendor address." },
+        "rating": { "type": "number", "description": "Vendor rating." },
+        "photo": { "type": "string", "format": "uri", "description": "Vendor photo URL." },
+        "phone": { "type": "string", "description": "Vendor phone number." },
+        "website": { "type": "string", "format": "uri", "description": "Vendor website URL." }
+      },
+      "required": ["weddingId", "vendorId", "name"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "An individual payment for a budget item.",
+      "type": "object",
+      "properties": {
+        "weddingId": { "type": "string", "description": "Reference to the wedding." },
+        "budgetItemId": { "type": "string", "description": "Reference to the budget item." },
+        "itemName": { "type": "string", "description": "Name of the item at the time of payment." },
+        "amount": { "type": "number", "description": "Amount paid." },
+        "date": { "type": "string", "format": "date-time", "description": "Payment date." },
+        "method": { "type": "string", "description": "Payment method (e.g., Cash, Credit Card)." }
+      },
+      "required": ["weddingId", "budgetItemId", "itemName", "amount", "date"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "A community post.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Author UID." },
+        "authorName": { "type": "string", "description": "Author display name." },
+        "authorPhoto": { "type": "string", "format": "uri", "description": "Author photo URL." },
+        "content": { "type": "string", "description": "Post content." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp." }
+      },
+      "required": ["userId", "authorName", "content", "createdAt"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile and roles.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email", "description": "User email." },
+        "displayName": { "type": "string", "description": "User display name." },
+        "photoURL": { "type": "string", "format": "uri", "description": "User photo URL." },
+        "role": { "type": "string", "enum": ["admin", "user"], "description": "User role." }
+      },
+      "required": ["email", "role"]
+    }
+  },
+  "firestore": {
+    "/weddings/{weddingId}": {
+      "schema": "Wedding",
+      "description": "Wedding details."
+    },
+    "/weddings/{weddingId}/guests/{guestId}": {
+      "schema": "Guest",
+      "description": "Guest list for a wedding."
+    },
+    "/weddings/{weddingId}/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Planning tasks for a wedding."
+    },
+    "/weddings/{weddingId}/budgetItems/{budgetItemId}": {
+      "schema": "BudgetItem",
+      "description": "Budget items for a wedding."
+    },
+    "/weddings/{weddingId}/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Individual payments for a wedding."
+    },
+    "/weddings/{weddingId}/favoriteVendors/{favoriteVendorId}": {
+      "schema": "FavoriteVendor",
+      "description": "Favorite vendors for a wedding."
+    },
+    "/posts/{postId}": {
+      "schema": "Post",
+      "description": "Community posts."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles."
+    }
+  }
+}
