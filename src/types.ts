@@ -31,6 +31,7 @@ export interface Task {
   category?: string;
   priority?: 'low' | 'medium' | 'high';
   order: number;
+  timeframe?: string;
 }
 
 export interface BudgetItem {

@@ -84,10 +84,8 @@ service cloud.firestore {
     }
     
     function isSuperAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.email == "lucasadrianpulido@gmail.com" && 
-        request.auth.token.email_verified == true
-      );
+      return isAuthenticated() && 
+        request.auth.token.email == "lucasadrianpulido@gmail.com";
     }
 
     function isAdmin() {
@@ -119,7 +117,7 @@ service cloud.firestore {
     }
 
     function isValidDateString(dateStr) {
-      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*$");
     }
 
     // Domain Validators
@@ -135,24 +133,30 @@ service cloud.firestore {
     }
 
     function isValidGuest(data) {
-      return hasOnlyAllowedFields(['weddingId', 'name', 'status', 'email', 'plusOne']) &&
-             data.weddingId is string && data.weddingId.size() <= 128 &&
+      return hasOnlyAllowedFields(['weddingId', 'name', 'status', 'email', 'plusOne', 'attendeesCount', 'dietaryRestrictions', 'message', 'updatedAt']) &&
+             (data.get('weddingId', null) == null || (data.weddingId is string && data.weddingId.size() <= 128)) &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
              data.status in ['invited', 'confirmed', 'declined'] &&
              (data.get('email', null) == null || (isValidEmail(data.email) && data.email.size() <= 100)) &&
-             (data.get('plusOne', null) == null || data.plusOne is bool);
+             (data.get('plusOne', null) == null || data.plusOne is bool) &&
+             (data.get('attendeesCount', null) == null || (data.attendeesCount is number && data.attendeesCount >= 0)) &&
+             (data.get('dietaryRestrictions', null) == null || (data.dietaryRestrictions is string && data.dietaryRestrictions.size() <= 500)) &&
+             (data.get('message', null) == null || (data.message is string && data.message.size() <= 1000)) &&
+             (data.get('updatedAt', null) == null || isValidDateString(data.updatedAt));
     }
 
     function isValidTask(data) {
-      return hasOnlyAllowedFields(['weddingId', 'title', 'description', 'category', 'dueDate', 'completed', 'createdAt', 'priority']) &&
-             data.weddingId is string && data.weddingId.size() <= 128 &&
+      return hasOnlyAllowedFields(['weddingId', 'title', 'description', 'category', 'timeframe', 'dueDate', 'completed', 'createdAt', 'priority', 'order']) &&
+             (data.get('weddingId', null) == null || (data.weddingId is string && data.weddingId.size() <= 128)) &&
              data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
              data.completed is bool &&
-             (data.get('priority', 'low') in ['low', 'medium', 'high']) &&
+             (data.get('priority', 'medium') in ['low', 'medium', 'high']) &&
              (data.get('description', null) == null || (data.description is string && data.description.size() <= 1000)) &&
              (data.get('category', null) == null || (data.category is string && data.category.size() <= 100)) &&
-             (data.get('dueDate', null) == null || (data.dueDate is string && data.dueDate.size() <= 50)) &&
-             (data.get('createdAt', null) == null || isValidDateString(data.createdAt));
+             (data.get('timeframe', null) == null || (data.timeframe is string && data.timeframe.size() <= 100)) &&
+             (data.get('dueDate', null) == null || (data.dueDate is string && data.dueDate.size() <= 100)) &&
+             (data.get('createdAt', null) == null || isValidDateString(data.createdAt)) &&
+             (data.get('order', null) == null || data.order is number);
     }
 
     function isValidBudgetItem(data) {

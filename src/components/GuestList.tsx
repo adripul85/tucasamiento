@@ -4,6 +4,7 @@ import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc } from
 import { handleFirestoreError, OperationType } from '../App';
 import { Guest } from '../types';
 import { UserPlus, Trash2, CheckCircle2, XCircle, Clock, Search } from 'lucide-react';
+import { ConfirmationDialog } from './ConfirmationDialog';
 
 export const GuestList: React.FC<{ weddingId: string }> = ({ weddingId }) => {
   const [guests, setGuests] = useState<Guest[]>([]);
@@ -13,6 +14,8 @@ export const GuestList: React.FC<{ weddingId: string }> = ({ weddingId }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [plusOneFilter, setPlusOneFilter] = useState<string>('all');
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [guestToDelete, setGuestToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, `weddings/${weddingId}/guests`));
@@ -27,14 +30,18 @@ export const GuestList: React.FC<{ weddingId: string }> = ({ weddingId }) => {
   const addGuest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return;
+    const guestData: any = {
+      weddingId,
+      name: newName,
+      status: 'invited',
+      plusOne: newPlusOne
+    };
+    if (newEmail.trim()) {
+      guestData.email = newEmail.trim();
+    }
+
     try {
-      await addDoc(collection(db, `weddings/${weddingId}/guests`), {
-        weddingId,
-        name: newName,
-        email: newEmail,
-        status: 'invited',
-        plusOne: newPlusOne
-      });
+      await addDoc(collection(db, `weddings/${weddingId}/guests`), guestData);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `weddings/${weddingId}/guests`);
     }
@@ -60,11 +67,18 @@ export const GuestList: React.FC<{ weddingId: string }> = ({ weddingId }) => {
   };
 
   const deleteGuest = async (id: string) => {
+    setGuestToDelete(id);
+    setIsConfirmOpen(true);
+  };
+
+  const confirmDeleteGuest = async () => {
+    if (!guestToDelete) return;
     try {
-      await deleteDoc(doc(db, `weddings/${weddingId}/guests`, id));
+      await deleteDoc(doc(db, `weddings/${weddingId}/guests`, guestToDelete));
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `weddings/${weddingId}/guests/${id}`);
+      handleFirestoreError(error, OperationType.DELETE, `weddings/${weddingId}/guests/${guestToDelete}`);
     }
+    setGuestToDelete(null);
   };
 
   const filteredGuests = guests.filter(g => {
@@ -251,6 +265,19 @@ export const GuestList: React.FC<{ weddingId: string }> = ({ weddingId }) => {
           </div>
         ))}
       </div>
+
+      <ConfirmationDialog
+        isOpen={isConfirmOpen}
+        onClose={() => {
+          setIsConfirmOpen(false);
+          setGuestToDelete(null);
+        }}
+        onConfirm={confirmDeleteGuest}
+        title="¿Eliminar invitado?"
+        message="Esta acción no se puede deshacer. El invitado será removido de la lista permanentemente."
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+      />
     </div>
   );
 };

@@ -10,7 +10,7 @@ import { Budget } from './components/Budget';
 import { VendorSearch } from './components/VendorSearch';
 import { RSVPForm } from './components/RSVPForm';
 import { Auth } from './components/Auth';
-import { Heart, Calendar, MapPin, Settings, X, LogOut, Star, ChevronRight, MessageSquare, User as UserIcon } from 'lucide-react';
+import { Heart, Calendar, MapPin, Settings, X, LogOut, Star, ChevronRight, MessageSquare, User as UserIcon, BookOpen, CheckSquare, Users, Calculator, ArrowRight, Share2, Utensils, Music } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getMessagingSafe, getToken, onMessage } from './firebase';
 
@@ -200,187 +200,7 @@ const NotificationManager: React.FC = () => {
   );
 };
 
-const EditProfileModal: React.FC<{ wedding: Wedding; onClose: () => void }> = ({ wedding, onClose }) => {
-  const [p1, setP1] = useState(wedding.partner1);
-  const [p2, setP2] = useState(wedding.partner2);
-  const [date, setDate] = useState(wedding.date || '');
-  const [location, setLocation] = useState(wedding.location || '');
-  const [saving, setSaving] = useState(false);
-
-  const update = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      await updateDoc(doc(db, 'weddings', wedding.id), {
-        partner1: p1,
-        partner2: p2,
-        date: date || null,
-        location: location || null
-      });
-      onClose();
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `weddings/${wedding.id}`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 backdrop-blur-md z-[2000] flex items-center justify-center p-6"
-    >
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95, y: 30 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 30 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-        className="bg-white w-full max-w-lg rounded-[48px] shadow-2xl overflow-hidden border border-white/20"
-      >
-        <div className="relative h-32 bg-rose-500 overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-rose-400 to-rose-600 opacity-90" />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Heart className="w-16 h-16 text-white/20 fill-white/10" />
-          </div>
-          <button 
-            onClick={onClose} 
-            className="absolute top-6 right-6 p-2 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-full transition-all text-white"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="p-10 -mt-8 relative bg-white rounded-t-[40px] space-y-8">
-          <div className="text-center space-y-1">
-            <h2 className="text-3xl font-serif font-bold text-slate-800">Editar Perfil</h2>
-            <p className="text-slate-400 text-sm">Personaliza los detalles de tu gran día</p>
-          </div>
-
-          <form onSubmit={update} className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-1">Pareja 1</label>
-                <motion.div 
-                  whileFocus={{ scale: 1.01 }}
-                  className="relative group"
-                >
-                  <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-rose-500 transition-colors" />
-                  <input
-                    type="text"
-                    value={p1}
-                    onChange={(e) => setP1(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-12 pr-5 py-4 outline-none focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 transition-all duration-300"
-                  />
-                </motion.div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-1">Pareja 2</label>
-                <motion.div 
-                  whileFocus={{ scale: 1.01 }}
-                  className="relative group"
-                >
-                  <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-rose-500 transition-colors" />
-                  <input
-                    type="text"
-                    value={p2}
-                    onChange={(e) => setP2(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-12 pr-5 py-4 outline-none focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 transition-all duration-300"
-                  />
-                </motion.div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-1">Fecha de la Boda</label>
-              <motion.div 
-                whileFocus={{ scale: 1.01 }}
-                className="relative group"
-              >
-                <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-rose-500 transition-colors" />
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-12 pr-5 py-4 outline-none focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 transition-all duration-300"
-                />
-              </motion.div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-1">Lugar de Celebración</label>
-              <motion.div 
-                whileFocus={{ scale: 1.01 }}
-                className="relative group"
-              >
-                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-rose-500 transition-colors" />
-                <input
-                  type="text"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  placeholder="Ej: Quinta Las Lilas"
-                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-12 pr-5 py-4 outline-none focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 transition-all duration-300"
-                />
-              </motion.div>
-            </div>
-
-            <motion.button 
-              type="submit" 
-              disabled={saving}
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.98 }}
-              className="w-full bg-rose-500 text-white font-bold py-5 rounded-2xl hover:bg-rose-600 transition-all shadow-xl shadow-rose-100 mt-4 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {saving ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                'Guardar Cambios'
-              )}
-            </motion.button>
-          </form>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-};
-
-const FEATURED_VENDORS = [
-  {
-    id: '1',
-    name: 'Palacio de las Flores',
-    category: 'Salón de Eventos',
-    rating: 4.9,
-    image: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80',
-    location: 'Buenos Aires, Argentina'
-  },
-  {
-    id: '2',
-    name: 'Luna & Sol Catering',
-    category: 'Catering',
-    rating: 4.8,
-    image: 'https://images.unsplash.com/photo-1555244162-803834f70033?auto=format&fit=crop&w=800&q=80',
-    location: 'Rosario, Argentina'
-  },
-  {
-    id: '3',
-    name: 'DJ Master Mix',
-    category: 'Música & DJ',
-    rating: 4.7,
-    image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=800&q=80',
-    location: 'Córdoba, Argentina'
-  },
-  {
-    id: '4',
-    name: 'Captura Eterna',
-    category: 'Fotografía',
-    rating: 5.0,
-    image: 'https://images.unsplash.com/photo-1537633552985-df8429e8048b?auto=format&fit=crop&w=800&q=80',
-    location: 'Mendoza, Argentina'
-  }
-];
-
-const Countdown: React.FC<{ targetDate: string | null }> = ({ targetDate }) => {
+const Countdown: React.FC<{ targetDate: string | null; compact?: boolean }> = ({ targetDate, compact }) => {
   const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; minutes: number; seconds: number } | null>(null);
 
   useEffect(() => {
@@ -410,6 +230,7 @@ const Countdown: React.FC<{ targetDate: string | null }> = ({ targetDate }) => {
   }, [targetDate]);
 
   if (!targetDate) {
+    if (compact) return null;
     return (
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
@@ -428,6 +249,29 @@ const Countdown: React.FC<{ targetDate: string | null }> = ({ targetDate }) => {
   }
 
   if (!timeLeft) return null;
+
+  if (compact) {
+    return (
+      <div className="flex items-center gap-4">
+        <div className="text-center">
+          <div className="text-xl font-bold text-slate-800 tabular-nums">{timeLeft.days}</div>
+          <div className="text-[8px] text-slate-400 uppercase font-bold">días</div>
+        </div>
+        <div className="text-center">
+          <div className="text-xl font-bold text-slate-800 tabular-nums">{timeLeft.hours}</div>
+          <div className="text-[8px] text-slate-400 uppercase font-bold">horas</div>
+        </div>
+        <div className="text-center">
+          <div className="text-xl font-bold text-slate-800 tabular-nums">{timeLeft.minutes}</div>
+          <div className="text-[8px] text-slate-400 uppercase font-bold">min</div>
+        </div>
+        <div className="text-center">
+          <div className="text-xl font-bold text-slate-800 tabular-nums">{timeLeft.seconds}</div>
+          <div className="text-[8px] text-slate-400 uppercase font-bold">s</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <motion.div 
@@ -467,137 +311,389 @@ const Countdown: React.FC<{ targetDate: string | null }> = ({ targetDate }) => {
   );
 };
 
-const Dashboard: React.FC<{ wedding: Wedding; setActiveTab: (tab: string) => void }> = ({ wedding, setActiveTab }) => {
-  const [showEditModal, setShowEditModal] = useState(false);
+const FEATURED_VENDORS = [
+  { id: 1, name: 'Hacienda Los Morales', category: 'Lugar', rating: 4.9, image: 'https://picsum.photos/seed/hacienda/400/300', location: 'CDMX' },
+  { id: 2, name: 'Florería El Girasol', category: 'Flores', rating: 4.8, image: 'https://picsum.photos/seed/flowers/400/300', location: 'Edomex' },
+  { id: 3, name: 'DJ Master Mix', category: 'Música', rating: 4.7, image: 'https://picsum.photos/seed/dj/400/300', location: 'CDMX' },
+  { id: 4, name: 'Catering Gourmet', category: 'Banquete', rating: 4.9, image: 'https://picsum.photos/seed/catering/400/300', location: 'CDMX' },
+];
+
+const EditProfileModal: React.FC<{ wedding: Wedding; onClose: () => void }> = ({ wedding, onClose }) => {
+  const [partner1, setPartner1] = useState(wedding.partner1);
+  const [partner2, setPartner2] = useState(wedding.partner2);
+  const [date, setDate] = useState(wedding.date);
+  const [location, setLocation] = useState(wedding.location);
+  const [loading, setLoading] = useState(false);
+
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, 'weddings', wedding.id), {
+        partner1,
+        partner2,
+        date,
+        location,
+      });
+      onClose();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `weddings/${wedding.id}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="space-y-12">
-      <header className="relative h-72 rounded-[40px] overflow-hidden shadow-2xl">
-        <img 
-          src="https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=1200&q=80" 
-          className="w-full h-full object-cover"
-          alt="Wedding"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex flex-col justify-end p-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-[32px] w-full max-w-md overflow-hidden shadow-2xl"
+      >
+        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+          <h3 className="text-xl font-serif font-bold text-slate-800">Editar Perfil</h3>
+          <button onClick={onClose} className="p-2 hover:bg-slate-50 rounded-full transition-colors">
+            <X className="w-5 h-5 text-slate-400" />
+          </button>
+        </div>
+        
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Pareja 1</label>
+              <input 
+                type="text" 
+                value={partner1}
+                onChange={(e) => setPartner1(e.target.value)}
+                className="w-full px-4 py-3 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-rose-500/20 transition-all"
+                placeholder="Nombre"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Pareja 2</label>
+              <input 
+                type="text" 
+                value={partner2}
+                onChange={(e) => setPartner2(e.target.value)}
+                className="w-full px-4 py-3 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-rose-500/20 transition-all"
+                placeholder="Nombre"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Fecha de la Boda</label>
+            <input 
+              type="date" 
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full px-4 py-3 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-rose-500/20 transition-all"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Ubicación</label>
+            <input 
+              type="text" 
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              className="w-full px-4 py-3 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-rose-500/20 transition-all"
+              placeholder="Ej: Ciudad de México"
+            />
+          </div>
+        </div>
+        
+        <div className="p-6 bg-slate-50 flex gap-3">
+          <button 
+            onClick={onClose}
+            className="flex-1 px-6 py-3 rounded-2xl font-bold text-slate-400 hover:bg-slate-100 transition-all"
           >
-            <h1 className="text-4xl md:text-5xl font-serif font-bold text-white mb-2">
-              {wedding.partner1} & {wedding.partner2}
-            </h1>
-            <div className="flex flex-wrap gap-4 text-white/90 text-sm font-medium">
-              <div className="flex items-center gap-2 bg-white/20 backdrop-blur-md px-4 py-2 rounded-full">
-                <Calendar className="w-4 h-4" />
-                {wedding.date ? new Date(wedding.date).toLocaleDateString() : 'Fecha por definir'}
-              </div>
-              <div className="flex items-center gap-2 bg-white/20 backdrop-blur-md px-4 py-2 rounded-full">
-                <MapPin className="w-4 h-4" />
-                {wedding.location || 'Lugar por definir'}
+            Cancelar
+          </button>
+          <button 
+            onClick={handleSave}
+            disabled={loading}
+            className="flex-1 px-6 py-3 rounded-2xl bg-rose-500 text-white font-bold hover:bg-rose-600 transition-all shadow-lg shadow-rose-500/25 disabled:opacity-50"
+          >
+            {loading ? 'Guardando...' : 'Guardar Cambios'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const Dashboard: React.FC<{ wedding: Wedding; setActiveTab: (tab: string) => void }> = ({ wedding, setActiveTab }) => {
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [stats, setStats] = useState({
+    vendors: 0,
+    tasks: { completed: 0, total: 0 },
+    guests: { confirmed: 0, total: 0 },
+    budget: { spent: 0, total: 0 }
+  });
+
+  useEffect(() => {
+    if (!wedding.id) return;
+
+    // Fetch Vendors
+    const vendorsUnsubscribe = onSnapshot(
+      collection(db, `weddings/${wedding.id}/favoriteVendors`),
+      (snapshot) => {
+        setStats(prev => ({ ...prev, vendors: snapshot.size }));
+      }
+    );
+
+    // Fetch Tasks
+    const tasksUnsubscribe = onSnapshot(
+      collection(db, `weddings/${wedding.id}/tasks`),
+      (snapshot) => {
+        const tasks = snapshot.docs.map(doc => doc.data());
+        setStats(prev => ({
+          ...prev,
+          tasks: {
+            completed: tasks.filter(t => t.completed).length,
+            total: tasks.length
+          }
+        }));
+      }
+    );
+
+    // Fetch Guests
+    const guestsUnsubscribe = onSnapshot(
+      collection(db, `weddings/${wedding.id}/guests`),
+      (snapshot) => {
+        const guests = snapshot.docs.map(doc => doc.data());
+        setStats(prev => ({
+          ...prev,
+          guests: {
+            confirmed: guests.filter(g => g.status === 'confirmed').length,
+            total: guests.length
+          }
+        }));
+      }
+    );
+
+    // Fetch Budget
+    const budgetUnsubscribe = onSnapshot(
+      collection(db, `weddings/${wedding.id}/budgetItems`),
+      (snapshot) => {
+        const items = snapshot.docs.map(doc => doc.data());
+        setStats(prev => ({
+          ...prev,
+          budget: {
+            spent: items.reduce((acc, item) => acc + (item.paid || 0), 0),
+            total: items.reduce((acc, item) => acc + (item.amount || 0), 0)
+          }
+        }));
+      }
+    );
+
+    return () => {
+      vendorsUnsubscribe();
+      tasksUnsubscribe();
+      guestsUnsubscribe();
+      budgetUnsubscribe();
+    };
+  }, [wedding.id]);
+
+  return (
+    <div className="space-y-8 pb-12">
+      {/* Profile Header */}
+      <div className="relative h-64 rounded-[40px] overflow-hidden">
+        <img 
+          src="https://picsum.photos/seed/wedding-cover/1200/400" 
+          alt="Wedding Cover"
+          className="w-full h-full object-cover"
+          referrerPolicy="no-referrer"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+        <div className="absolute bottom-8 left-8 right-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div className="flex items-center gap-6">
+            <div className="w-24 h-24 rounded-full border-4 border-white overflow-hidden shadow-xl">
+              <img 
+                src="https://picsum.photos/seed/couple/200/200" 
+                alt="Couple"
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <div className="text-white">
+              <h1 className="text-3xl font-serif font-bold">{wedding.partner1} & {wedding.partner2}</h1>
+              <div className="flex items-center gap-4 mt-2 text-white/80 text-sm">
+                <div className="flex items-center gap-1">
+                  <Calendar className="w-4 h-4" />
+                  {wedding.date ? new Date(wedding.date).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Fecha por definir'}
+                </div>
+                <div className="flex items-center gap-1">
+                  <MapPin className="w-4 h-4" />
+                  {wedding.location || 'Ubicación por definir'}
+                </div>
               </div>
             </div>
-          </motion.div>
-        </div>
-      </header>
-
-      <div className="flex justify-center">
-        <div className="w-full max-w-2xl">
-          <Countdown targetDate={wedding.date} />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-        <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-4">
-          <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-500">
-            <Heart className="w-6 h-6 fill-rose-500" />
           </div>
-          <h3 className="text-2xl font-serif font-bold text-slate-800">¡Bienvenidos!</h3>
-          <p className="text-slate-500 leading-relaxed">
-            Estamos felices de acompañarlos en la organización de su casamiento. 
-            Usa el menú para gestionar tus invitados, presupuesto y tareas.
-          </p>
-        </div>
-
-        <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-4 group cursor-pointer hover:border-rose-200 transition-all" onClick={() => setActiveTab('vendors')}>
-          <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
-            <MapPin className="w-6 h-6" />
-          </div>
-          <h3 className="text-2xl font-serif font-bold text-slate-800">Proveedores</h3>
-          <p className="text-slate-500 leading-relaxed">
-            Busca catering, DJs y lugares para tu fiesta directamente en el mapa.
-          </p>
-        </div>
-
-        <div className="bg-rose-500 p-8 rounded-[32px] text-white shadow-xl shadow-rose-100 flex flex-col justify-between">
-          <div className="space-y-2">
-            <Settings className="w-8 h-8 opacity-50" />
-            <h3 className="text-2xl font-serif font-bold">Configuración</h3>
-            <p className="text-white/80 text-sm">Pronto podrás personalizar aún más tu perfil.</p>
-          </div>
-          <div className="flex flex-col gap-2 mt-6">
+          <div className="flex gap-3">
             <button 
-              onClick={() => setShowEditModal(true)}
-              className="bg-white/20 hover:bg-white/30 backdrop-blur-md text-white font-bold py-3 px-6 rounded-2xl transition-all"
+              onClick={() => setIsEditingProfile(true)}
+              className="px-6 py-3 rounded-2xl bg-white/20 backdrop-blur-md text-white font-bold hover:bg-white/30 transition-all border border-white/30"
             >
               Editar Perfil
             </button>
-            <button 
-              onClick={() => auth.signOut()}
-              className="bg-white/10 hover:bg-white/20 backdrop-blur-md text-white/80 font-medium py-3 px-6 rounded-2xl transition-all flex items-center justify-center gap-2"
-            >
-              <LogOut className="w-4 h-4" />
-              Cerrar Sesión
+            <button className="p-3 rounded-2xl bg-white/20 backdrop-blur-md text-white hover:bg-white/30 transition-all border border-white/30">
+              <Share2 className="w-5 h-5" />
             </button>
           </div>
         </div>
       </div>
 
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-serif font-bold text-slate-800">Mejores Proveedores</h2>
-          <button 
-            onClick={() => setActiveTab('vendors')}
-            className="flex items-center gap-2 text-rose-500 font-bold hover:underline"
-          >
-            Ver todos <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {FEATURED_VENDORS.map((vendor) => (
-            <motion.div
-              key={vendor.id}
-              whileHover={{ y: -5 }}
-              className="bg-white rounded-[32px] overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-rose-100 transition-all group"
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Left Column: Stats & Countdown */}
+        <div className="lg:col-span-2 space-y-8">
+          {/* Countdown Card */}
+          <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm flex items-center justify-between">
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Tiempo Restante</h3>
+              <p className="text-2xl font-serif font-bold text-slate-800">Faltan para el gran día</p>
+            </div>
+            <Countdown targetDate={wedding.date} compact />
+          </div>
+
+          {/* Stats Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <motion.button
+              whileHover={{ y: -4 }}
+              onClick={() => setActiveTab('vendors')}
+              className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm text-left group"
             >
-              <div className="h-48 relative overflow-hidden">
-                <img 
-                  src={vendor.image} 
-                  alt={vendor.name}
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                />
-                <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full flex items-center gap-1 text-amber-500 font-bold text-sm">
-                  <Star className="w-3 h-3 fill-amber-500" />
-                  {vendor.rating}
-                </div>
+              <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-500 mb-4 group-hover:scale-110 transition-transform">
+                <BookOpen className="w-6 h-6" />
               </div>
-              <div className="p-6 space-y-2">
-                <span className="text-rose-500 text-xs font-bold uppercase tracking-wider">{vendor.category}</span>
-                <h4 className="text-lg font-bold text-slate-800 line-clamp-1">{vendor.name}</h4>
-                <div className="flex items-center gap-1 text-slate-400 text-sm">
-                  <MapPin className="w-3 h-3" />
-                  <span className="line-clamp-1">{vendor.location}</span>
-                </div>
+              <div className="text-2xl font-bold text-slate-800">{stats.vendors}</div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Proveedores</div>
+            </motion.button>
+
+            <motion.button
+              whileHover={{ y: -4 }}
+              onClick={() => setActiveTab('tasks')}
+              className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm text-left group"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-500 mb-4 group-hover:scale-110 transition-transform">
+                <CheckSquare className="w-6 h-6" />
               </div>
-            </motion.div>
-          ))}
+              <div className="text-2xl font-bold text-slate-800">{stats.tasks.completed}/{stats.tasks.total}</div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tareas</div>
+            </motion.button>
+
+            <motion.button
+              whileHover={{ y: -4 }}
+              onClick={() => setActiveTab('guests')}
+              className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm text-left group"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-500 mb-4 group-hover:scale-110 transition-transform">
+                <Users className="w-6 h-6" />
+              </div>
+              <div className="text-2xl font-bold text-slate-800">{stats.guests.confirmed}/{stats.guests.total}</div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Invitados</div>
+            </motion.button>
+
+            <motion.button
+              whileHover={{ y: -4 }}
+              onClick={() => setActiveTab('budget')}
+              className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm text-left group"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 flex items-center justify-center text-rose-500 mb-4 group-hover:scale-110 transition-transform">
+                <Calculator className="w-6 h-6" />
+              </div>
+              <div className="text-2xl font-bold text-slate-800">${stats.budget.spent.toLocaleString()}</div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Presupuesto</div>
+            </motion.button>
+          </div>
+
+          {/* Featured Vendors */}
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-serif font-bold text-slate-800">Mejores Proveedores</h2>
+              <button 
+                onClick={() => setActiveTab('vendors')}
+                className="text-rose-500 font-bold text-sm flex items-center gap-1 hover:gap-2 transition-all"
+              >
+                Ver todos <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {FEATURED_VENDORS.map(vendor => (
+                <motion.div 
+                  key={vendor.id}
+                  whileHover={{ y: -8 }}
+                  className="bg-white rounded-[32px] overflow-hidden border border-slate-100 shadow-sm group cursor-pointer"
+                >
+                  <div className="relative h-40">
+                    <img 
+                      src={vendor.image} 
+                      alt={vendor.name}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute top-4 right-4 px-3 py-1 rounded-full bg-white/90 backdrop-blur-sm text-xs font-bold text-slate-800 flex items-center gap-1">
+                      <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                      {vendor.rating}
+                    </div>
+                  </div>
+                  <div className="p-6">
+                    <div className="text-[10px] font-bold text-rose-500 uppercase tracking-wider mb-1">{vendor.category}</div>
+                    <h4 className="font-bold text-slate-800 line-clamp-1">{vendor.name}</h4>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Tips & Next Steps */}
+        <div className="space-y-8">
+          <div className="bg-rose-500 p-8 rounded-[40px] text-white space-y-6 relative overflow-hidden">
+            <div className="absolute -right-8 -top-8 w-32 h-32 bg-white/10 rounded-full blur-2xl" />
+            <div className="absolute -left-8 -bottom-8 w-32 h-32 bg-black/10 rounded-full blur-2xl" />
+            
+            <div className="relative">
+              <h3 className="text-xl font-serif font-bold mb-2">¡Tu boda soñada!</h3>
+              <p className="text-rose-100 text-sm leading-relaxed">
+                Estamos aquí para ayudarte a que cada detalle sea perfecto. Comienza por definir tu presupuesto y lista de invitados.
+              </p>
+              <button 
+                onClick={() => setActiveTab('tasks')}
+                className="mt-6 w-full py-4 bg-white text-rose-500 font-bold rounded-2xl hover:bg-rose-50 transition-all shadow-xl shadow-black/10"
+              >
+                Ver Siguiente Tarea
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-6">
+            <h3 className="text-lg font-serif font-bold text-slate-800">Próximos Pasos</h3>
+            <div className="space-y-4">
+              {[
+                { title: 'Confirmar Banquete', date: '25 Mar', icon: Utensils, color: 'bg-amber-50 text-amber-500' },
+                { title: 'Prueba de Vestido', date: '28 Mar', icon: Heart, color: 'bg-rose-50 text-rose-500' },
+                { title: 'Cita con el DJ', date: '02 Abr', icon: Music, color: 'bg-indigo-50 text-indigo-500' },
+              ].map((step, i) => (
+                <div key={i} className="flex items-center gap-4 p-4 rounded-2xl hover:bg-slate-50 transition-all cursor-pointer group">
+                  <div className={`w-12 h-12 rounded-xl ${step.color} flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                    <step.icon className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-bold text-slate-800 text-sm">{step.title}</div>
+                    <div className="text-[10px] text-slate-400 font-bold uppercase">{step.date}</div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-400 transition-colors" />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
       <AnimatePresence>
-        {showEditModal && (
+        {isEditingProfile && (
           <EditProfileModal 
             wedding={wedding} 
-            onClose={() => setShowEditModal(false)} 
+            onClose={() => setIsEditingProfile(false)} 
           />
         )}
       </AnimatePresence>
@@ -622,36 +718,8 @@ const CreateWedding: React.FC<{ user: User }> = ({ user }) => {
         createdAt: new Date().toISOString()
       });
 
-      // Pre-load basic tasks
-      const basicTasks = [
-        { title: 'Definir el presupuesto total', category: 'Presupuesto', priority: 'high' },
-        { title: 'Hacer la lista preliminar de invitados', category: 'Invitados', priority: 'high' },
-        { title: 'Reservar el salón o lugar de la ceremonia', category: 'Logística', priority: 'high' },
-        { title: 'Contratar el servicio de catering', category: 'Comida', priority: 'medium' },
-        { title: 'Elegir el vestido y el traje', category: 'Vestimenta', priority: 'medium' },
-        { title: 'Contratar fotógrafo y videógrafo', category: 'Recuerdos', priority: 'medium' },
-        { title: 'Contratar DJ o banda de música', category: 'Música', priority: 'medium' },
-        { title: 'Elegir y encargar la torta de bodas', category: 'Comida', priority: 'low' },
-        { title: 'Definir la decoración floral', category: 'Decoración', priority: 'low' },
-        { title: 'Iniciar trámites legales o religiosos', category: 'Ceremonia', priority: 'high' },
-        { title: 'Planificar la luna de miel', category: 'Otros', priority: 'low' },
-        { title: 'Enviar las invitaciones (Save the Date)', category: 'Invitados', priority: 'low' },
-        { title: 'Elegir las alianzas', category: 'Ceremonia', priority: 'low' },
-        { title: 'Prueba de peinado y maquillaje', category: 'Vestimenta', priority: 'low' }
-      ];
-
-      const tasksCollection = collection(db, 'weddings', weddingRef.id, 'tasks');
-      for (let i = 0; i < basicTasks.length; i++) {
-        const task = basicTasks[i];
-        await addDoc(tasksCollection, {
-          ...task,
-          weddingId: weddingRef.id,
-          completed: false,
-          description: 'Tarea pre-cargada para ayudarte a comenzar.',
-          createdAt: new Date().toISOString(),
-          order: i
-        });
-      }
+      // Task pre-loading is now handled automatically by the Tasks component
+      // when it detects an empty task list for a wedding.
 
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'weddings');

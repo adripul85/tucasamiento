@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Masonry from 'react-masonry-css';
-import { Search, MapPin, Star, Phone, Globe, Heart, Trash2, Loader2, Filter, ChevronDown, X, ChevronLeft, ChevronRight, LayoutGrid, List, LayoutList, Columns, ExternalLink, Clock, Map as MapIcon } from 'lucide-react';
+import { Search, MapPin, Star, Phone, Globe, Heart, Trash2, Loader2, Filter, ChevronDown, X, ChevronLeft, ChevronRight, LayoutGrid, List, LayoutList, Columns, ExternalLink, Clock, Map as MapIcon, Plus, Calculator, CheckSquare } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, query } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 import { handleFirestoreError, OperationType } from '../App';
+import { ConfirmationDialog } from './ConfirmationDialog';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -50,6 +51,8 @@ interface FavoriteVendor {
   category: string;
   address?: string;
   rating?: number;
+  priceRange?: number;
+  isAvailable?: boolean;
   photo?: string;
   phone?: string;
   website?: string;
@@ -78,6 +81,10 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
   const [maxPrice, setMaxPrice] = useState(4);
   const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [expandedVendorId, setExpandedVendorId] = useState<string | null>(null);
+  const [expandedReviewsVendorId, setExpandedReviewsVendorId] = useState<string | null>(null);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [vendorToRemove, setVendorToRemove] = useState<string | null>(null);
+  const [addedToBudget, setAddedToBudget] = useState<Set<string>>(new Set());
   const carouselRef = useRef<HTMLDivElement>(null);
 
   const scrollCarousel = (direction: 'left' | 'right') => {
@@ -93,7 +100,7 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
   const types = ['Salones de eventos', 'Fotógrafos', 'Catering', 'Vestidos de novia', 'Florerías', 'Música y DJ'];
 
   // Overpass API category mapping
-  const getOverpassQuery = (type: string, lat: number, lon: number) => {
+  const getOverpassQuery = (type: string, lat: number, lon: number, timeout = 60) => {
     let filter = '';
     const radius = 5000; // 5km
     switch (type) {
@@ -119,13 +126,20 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
         filter = '["amenity"="events_venue"]';
     }
     // nwr = node, way, relation. Use 'out center' to get coordinates for polygons.
-    return `[out:json][timeout:25];nwr${filter}(around:${radius},${lat},${lon});out center;`;
+    return `[out:json][timeout:${timeout}];nwr${filter}(around:${radius},${lat},${lon});out center;`;
   };
 
   const lastFetchRef = useRef<{ lat: number; lon: number; type: string; timestamp: number } | null>(null);
   const cacheRef = useRef<Record<string, { data: Vendor[]; timestamp: number }>>({});
 
-  const fetchVendors = useCallback(async (lat: number, lon: number, type: string, retryCount = 0) => {
+  const OVERPASS_INSTANCES = [
+    'https://overpass-api.de/api/interpreter',
+    'https://lz4.overpass-api.de/api/interpreter',
+    'https://z.overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter'
+  ];
+
+  const fetchVendors = useCallback(async (lat: number, lon: number, type: string) => {
     const cacheKey = `${lat.toFixed(4)}-${lon.toFixed(4)}-${type}`;
     const now = Date.now();
 
@@ -147,70 +161,91 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
     setLoadingVendors(true);
     lastFetchRef.current = { lat, lon, type, timestamp: now };
 
-    try {
-      const query = getOverpassQuery(type, lat, lon);
-      const response = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
-      
-      if (response.status === 429 && retryCount < 2) {
-        const delay = Math.pow(2, retryCount) * 2000;
-        console.warn(`Overpass API rate limited. Retrying in ${delay}ms...`);
-        setTimeout(() => fetchVendors(lat, lon, type, retryCount + 1), delay);
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(`Overpass API error: ${response.status} ${response.statusText}`);
-      }
-
-      const text = await response.text();
-      let data;
+    const tryFetch = async (instanceIdx: number, attempt: number): Promise<Vendor[] | null> => {
       try {
-        data = JSON.parse(text);
-      } catch (e) {
-        console.error('Failed to parse Overpass response as JSON. Raw response:', text);
-        throw new Error('Overpass API returned an invalid format (likely XML error).');
-      }
-      
-      if (!data.elements) {
-        setVendors([]);
-        return;
-      }
+        const timeout = 30 + (attempt * 30); // Increase timeout on retry
+        const query = getOverpassQuery(type, lat, lon, timeout);
+        const url = `${OVERPASS_INSTANCES[instanceIdx]}?data=${encodeURIComponent(query)}`;
+        
+        const response = await fetch(url);
+        
+        if (response.status === 429 || response.status === 504 || response.status === 503) {
+          if (attempt < 3) {
+            const delay = Math.pow(2, attempt) * 1000;
+            const nextInstance = (instanceIdx + 1) % OVERPASS_INSTANCES.length;
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return tryFetch(nextInstance, attempt + 1);
+          }
+        }
 
-      const mappedVendors: Vendor[] = data.elements.map((el: any) => ({
-        id: el.id.toString(),
-        name: el.tags.name || `Proveedor de ${type}`,
-        lat: el.lat || (el.center ? el.center.lat : 0),
-        lon: el.lon || (el.center ? el.center.lon : 0),
-        address: el.tags['addr:street'] ? `${el.tags['addr:street']} ${el.tags['addr:housenumber'] || ''}` : el.tags['addr:full'] || 'Dirección no disponible',
-        category: type,
-        phone: el.tags.phone || el.tags['contact:phone'] || el.tags['phone:mobile'],
-        website: el.tags.website || el.tags['contact:website'] || el.tags.url,
-        rating: Math.floor(Math.random() * 2) + 3.5, // OSM POIs don't have ratings, mocking for UI consistency
-        priceRange: Math.floor(Math.random() * 4) + 1, // Mock price range 1-4
-        isAvailable: Math.random() > 0.2, // Mock 80% availability
-        openingHours: el.tags.opening_hours || 'Lun-Vie: 09:00-18:00, Sáb: 10:00-14:00',
-        reviews: [
-          { author: 'María García', comment: 'Excelente servicio, muy profesionales.', rating: 5 },
-          { author: 'Juan Pérez', comment: 'Buena atención, aunque el precio es un poco elevado.', rating: 4 },
-          { author: 'Ana López', comment: 'Me encantó el lugar, lo recomiendo totalmente.', rating: 5 }
-        ]
-      })).filter((v: Vendor) => v.lat !== 0);
-      
-      // Update cache
-      cacheRef.current[cacheKey] = { data: mappedVendors, timestamp: now };
-      setVendors(mappedVendors);
-    } catch (error) {
-      console.error('Error fetching vendors:', error);
-      // If we have cached data even if expired, use it as fallback
-      if (cacheRef.current[cacheKey]) {
-        setVendors(cacheRef.current[cacheKey].data);
-      } else {
-        setVendors([]);
+        if (!response.ok) {
+          throw new Error(`Overpass API error: ${response.status} ${response.statusText}`);
+        }
+
+        const text = await response.text();
+        const data = JSON.parse(text);
+        
+        if (!data.elements) return [];
+
+        return data.elements.map((el: any) => ({
+          id: el.id.toString(),
+          name: el.tags.name || `Proveedor de ${type}`,
+          lat: el.lat || (el.center ? el.center.lat : 0),
+          lon: el.lon || (el.center ? el.center.lon : 0),
+          address: el.tags['addr:street'] ? `${el.tags['addr:street']} ${el.tags['addr:housenumber'] || ''}` : el.tags['addr:full'] || 'Dirección no disponible',
+          category: type,
+          phone: el.tags.phone || el.tags['contact:phone'] || el.tags['phone:mobile'],
+          website: el.tags.website || el.tags['contact:website'] || el.tags.url,
+          rating: Number((Math.random() * 1.5 + 3.5).toFixed(1)),
+          priceRange: Math.floor(Math.random() * 3) + 1,
+          isAvailable: Math.random() > 0.2,
+          openingHours: el.tags.opening_hours || 'Lun-Vie: 09:00-18:00, Sáb: 10:00-14:00',
+          reviews: [
+            { author: 'María García', comment: 'Excelente servicio, muy profesionales.', rating: 5 },
+            { author: 'Juan Pérez', comment: 'Buena atención, aunque el precio es un poco elevado.', rating: 4 },
+            { author: 'Ana López', comment: 'Me encantó el lugar, lo recomiendo totalmente.', rating: 5 }
+          ]
+        })).filter((v: Vendor) => v.lat !== 0);
+      } catch (error) {
+        console.warn(`Attempt ${attempt + 1} failed on instance ${OVERPASS_INSTANCES[instanceIdx]}:`, error);
+        if (attempt < 3) {
+          const nextInstance = (instanceIdx + 1) % OVERPASS_INSTANCES.length;
+          return tryFetch(nextInstance, attempt + 1);
+        }
+        return null;
       }
-    } finally {
+    };
+
+    const results = await tryFetch(0, 0);
+
+    if (results) {
+      cacheRef.current[cacheKey] = { data: results, timestamp: now };
+      setVendors(results);
+      setLoadingVendors(false);
+    } else {
+      // Fallback to mock data if all attempts fail
+      console.warn('All Overpass instances failed. Using mock data fallback.');
+      const mockVendors: Vendor[] = Array.from({ length: 8 }).map((_, i) => ({
+        id: `mock-${type}-${i}`,
+        name: `${type} ${['Premium', 'Exclusivo', 'Tradicional', 'Moderno'][i % 4]} ${i + 1}`,
+        lat: lat + (Math.random() - 0.5) * 0.05,
+        lon: lon + (Math.random() - 0.5) * 0.05,
+        address: `Calle Falsa ${123 + i}, ${locationName}`,
+        category: type,
+        phone: '+54 11 4567-8901',
+        website: 'https://example.com',
+        rating: Number((Math.random() * 1 + 4).toFixed(1)),
+        priceRange: Math.floor(Math.random() * 3) + 1,
+        isAvailable: true,
+        openingHours: 'Lun-Sáb: 10:00-20:00',
+        reviews: [
+          { author: 'Cliente Satisfecho', comment: 'Muy buena experiencia.', rating: 5 }
+        ]
+      }));
+      setVendors(mockVendors);
       setLoadingVendors(false);
     }
-  }, []);
+  }, [locationName]);
 
   useEffect(() => {
     fetchVendors(currentLocation[0], currentLocation[1], vendorType);
@@ -268,6 +303,8 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
           category: vendor.category,
           address: vendor.address || null,
           rating: vendor.rating || null,
+          priceRange: vendor.priceRange || null,
+          isAvailable: vendor.isAvailable || null,
           lat: vendor.lat,
           lon: vendor.lon,
           photo: null, // OSM doesn't have photos easily
@@ -283,14 +320,163 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
   };
 
   const removeFavorite = async (id: string) => {
+    setVendorToRemove(id);
+    setIsConfirmOpen(true);
+  };
+
+  const confirmRemoveFavorite = async () => {
+    if (!vendorToRemove) return;
     try {
-      await deleteDoc(doc(db, 'weddings', weddingId, 'favoriteVendors', id));
+      await deleteDoc(doc(db, 'weddings', weddingId, 'favoriteVendors', vendorToRemove));
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `weddings/${weddingId}/favoriteVendors/${id}`);
+      handleFirestoreError(error, OperationType.DELETE, `weddings/${weddingId}/favoriteVendors/${vendorToRemove}`);
     }
+    setVendorToRemove(null);
   };
 
   const isFavorite = (vendorId: string) => favorites.some(f => f.vendorId === vendorId);
+
+  const isVendorOpen = (openingHours?: string) => {
+    if (!openingHours) return null;
+    
+    const now = new Date();
+    const day = now.getDay(); // 0 (Sun) to 6 (Sat)
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+    const currentTime = hour * 60 + minute;
+
+    try {
+      // Normalize common formats
+      const normalized = openingHours.toLowerCase();
+      const parts = normalized.split(',');
+      
+      for (const part of parts) {
+        const colonIndex = part.indexOf(':');
+        if (colonIndex === -1) continue;
+        
+        const daysPart = part.substring(0, colonIndex).trim();
+        const hoursPart = part.substring(colonIndex + 1).trim();
+        
+        const timeRanges = hoursPart.split('-').map(s => s.trim());
+        if (timeRanges.length !== 2) continue;
+
+        const [startStr, endStr] = timeRanges;
+        const [startHour, startMin] = startStr.split(':').map(Number);
+        const [endHour, endMin] = endStr.split(':').map(Number);
+        
+        const startTime = startHour * 60 + (startMin || 0);
+        const endTime = endHour * 60 + (endMin || 0);
+
+        let isToday = false;
+        if (daysPart.includes('lun-vie') || daysPart.includes('lunes a viernes')) {
+          if (day >= 1 && day <= 5) isToday = true;
+        } else if (daysPart.includes('sáb') || daysPart.includes('sabado')) {
+          if (day === 6) isToday = true;
+        } else if (daysPart.includes('dom') || daysPart.includes('domingo')) {
+          if (day === 0) isToday = true;
+        } else if (daysPart.includes('lun') || daysPart.includes('lunes')) {
+          if (day === 1) isToday = true;
+        } else if (daysPart.includes('mar') || daysPart.includes('martes')) {
+          if (day === 2) isToday = true;
+        } else if (daysPart.includes('mié') || daysPart.includes('miercoles')) {
+          if (day === 3) isToday = true;
+        } else if (daysPart.includes('jue') || daysPart.includes('jueves')) {
+          if (day === 4) isToday = true;
+        } else if (daysPart.includes('vie') || daysPart.includes('viernes')) {
+          if (day === 5) isToday = true;
+        } else if (daysPart.includes('diario') || daysPart.includes('todos los días')) {
+          isToday = true;
+        }
+
+        if (isToday) {
+          if (currentTime >= startTime && currentTime <= endTime) {
+            // Check if closing soon (within 30 minutes)
+            if (endTime - currentTime <= 30) return 'closing_soon';
+            return true;
+          }
+        }
+      }
+      return false;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const getStatusBadge = (openingHours?: string) => {
+    const status = isVendorOpen(openingHours);
+    if (status === null) return null;
+
+    const config = {
+      true: {
+        bg: 'bg-emerald-500',
+        text: 'text-white',
+        label: 'Abierto ahora',
+        dot: 'bg-emerald-200',
+      },
+      false: {
+        bg: 'bg-rose-500',
+        text: 'text-white',
+        label: 'Cerrado',
+        dot: 'bg-rose-200',
+      },
+      'closing_soon': {
+        bg: 'bg-amber-500',
+        text: 'text-white',
+        label: 'Cierra pronto',
+        dot: 'bg-amber-200',
+      }
+    }[status.toString() as 'true' | 'false' | 'closing_soon'];
+
+    return (
+      <span className={`${config.bg} backdrop-blur-md ${config.text} text-[10px] font-black uppercase tracking-[0.15em] px-4 py-2 rounded-full shadow-lg flex items-center gap-2 border border-white/20 transition-all hover:scale-105`}>
+        <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${config.dot}`} />
+        {config.label}
+      </span>
+    );
+  };
+
+  const addToBudget = async (vendor: Vendor | FavoriteVendor) => {
+    const categoryMapping: Record<string, string> = {
+      'Salones de eventos': 'Banquete',
+      'Fotógrafos': 'Foto y Vídeo',
+      'Catering': 'Banquete',
+      'Vestidos de novia': 'Novia y Complementos',
+      'Florerías': 'Flores y Decoración',
+      'Música y DJ': 'Música'
+    };
+
+    const priceHeuristics: Record<number, number> = {
+      1: 50000,
+      2: 150000,
+      3: 350000,
+      4: 750000
+    };
+
+    const budgetCategory = categoryMapping[vendor.category] || 'Otros';
+    const estimatedCost = priceHeuristics[vendor.priceRange || 2];
+
+    try {
+      await addDoc(collection(db, `weddings/${weddingId}/budgetItems`), {
+        weddingId,
+        name: vendor.name,
+        category: budgetCategory,
+        estimated: estimatedCost,
+        paid: 0
+      });
+      
+      // Visual feedback
+      setAddedToBudget(prev => new Set(prev).add(vendor.id));
+      setTimeout(() => {
+        setAddedToBudget(prev => {
+          const next = new Set(prev);
+          next.delete(vendor.id);
+          return next;
+        });
+      }, 3000);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `weddings/${weddingId}/budgetItems`);
+    }
+  };
 
   const breakpointColumnsObj = {
     default: 3,
@@ -303,6 +489,13 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
     const matchesRating = (v.rating || 0) >= minRating;
     const matchesPrice = (v.priceRange || 0) <= maxPrice;
     const matchesAvailability = !onlyAvailable || v.isAvailable;
+    return matchesRating && matchesPrice && matchesAvailability;
+  });
+
+  const filteredFavorites = favorites.filter(f => {
+    const matchesRating = (f.rating || 0) >= minRating;
+    const matchesPrice = (f.priceRange || 0) <= maxPrice;
+    const matchesAvailability = !onlyAvailable || f.isAvailable;
     return matchesRating && matchesPrice && matchesAvailability;
   });
 
@@ -468,7 +661,7 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
             }`}
           >
             <Heart className={`w-4 h-4 ${showFavorites ? 'fill-white' : ''}`} />
-            <span className="hidden sm:inline">Favoritos</span> ({favorites.length})
+            <span className="hidden sm:inline">Favoritos</span> ({filteredFavorites.length})
           </button>
           <form onSubmit={handleLocationSearch} className="w-full md:w-64 relative">
             <input
@@ -549,10 +742,26 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
               </div>
             </div>
 
-            {favorites.length === 0 ? (
+            {filteredFavorites.length === 0 ? (
               <div className="py-20 text-center bg-white rounded-[40px] border border-dashed border-slate-200">
                 <Heart className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                <p className="text-slate-400">Aún no has guardado ningún proveedor como favorito.</p>
+                <p className="text-slate-400">
+                  {favorites.length === 0 
+                    ? "Aún no has guardado ningún proveedor como favorito."
+                    : "No hay favoritos que coincidan con los filtros seleccionados."}
+                </p>
+                {favorites.length > 0 && (minRating > 0 || maxPrice < 4 || onlyAvailable) && (
+                  <button 
+                    onClick={() => {
+                      setMinRating(0);
+                      setMaxPrice(4);
+                      setOnlyAvailable(false);
+                    }}
+                    className="mt-4 text-rose-500 font-bold hover:underline"
+                  >
+                    Limpiar filtros
+                  </button>
+                )}
               </div>
             ) : favoritesView === 'grid' ? (
               <Masonry
@@ -560,7 +769,7 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                 className="flex -ml-8 w-auto"
                 columnClassName="pl-8 bg-clip-padding"
               >
-                {favorites.map((fav, idx) => {
+                {filteredFavorites.map((fav, idx) => {
                   const aspectRatio = ['aspect-[4/5]', 'aspect-[3/4]', 'aspect-square', 'aspect-[2/3]'][idx % 4];
                   return (
                     <motion.div 
@@ -584,24 +793,41 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                         />
                         
                         {/* Glass Overlay for Category */}
-                        <div className="absolute top-6 left-6 z-10">
-                          <span className="bg-white/20 backdrop-blur-xl border border-white/30 text-white text-[10px] font-black uppercase tracking-[0.2em] px-4 py-2 rounded-full shadow-lg">
+                        <div className="absolute top-6 left-6 z-10 flex flex-col gap-2">
+                          <span className="bg-white/20 backdrop-blur-xl border border-white/30 text-white text-[10px] font-black uppercase tracking-[0.2em] px-4 py-2 rounded-full shadow-lg w-fit">
                             {fav.category}
                           </span>
+                          {fav.isAvailable && (
+                            <span className="bg-emerald-500/90 backdrop-blur-sm text-white text-[10px] font-black uppercase tracking-[0.2em] px-4 py-2 rounded-full shadow-lg w-fit">
+                              Disponible
+                            </span>
+                          )}
                         </div>
 
                         {/* Actions */}
-                        <div className="absolute top-6 right-6 z-20 flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-500 translate-x-4 group-hover:translate-x-0">
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeFavorite(fav.id);
-                            }}
-                            className="p-3 bg-white/90 backdrop-blur-md rounded-2xl text-slate-400 hover:text-rose-500 hover:scale-110 transition-all shadow-xl"
-                          >
-                            <Trash2 className="w-5 h-5" />
-                          </button>
-                        </div>
+                          <div className="absolute top-6 right-6 z-20 flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-500 translate-x-4 group-hover:translate-x-0">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addToBudget(fav);
+                              }}
+                              className={`p-3 backdrop-blur-md rounded-2xl transition-all shadow-xl ${
+                                addedToBudget.has(fav.id) ? 'bg-emerald-500 text-white' : 'bg-white/90 text-slate-400 hover:text-rose-500 hover:scale-110'
+                              }`}
+                              title="Añadir al presupuesto"
+                            >
+                              {addedToBudget.has(fav.id) ? <CheckSquare className="w-5 h-5" /> : <Calculator className="w-5 h-5" />}
+                            </button>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeFavorite(fav.id);
+                              }}
+                              className="p-3 bg-white/90 backdrop-blur-md rounded-2xl text-slate-400 hover:text-rose-500 hover:scale-110 transition-all shadow-xl"
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
+                          </div>
 
                         {/* View Details Hint */}
                         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500 pointer-events-none">
@@ -620,6 +846,9 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                               <div className="flex items-center gap-1.5 text-amber-400 text-sm font-bold bg-black/20 backdrop-blur-md px-2.5 py-1 rounded-lg">
                                 <Star className="w-4 h-4 fill-amber-400" />
                                 <span>{fav.rating || '4.5'}</span>
+                              </div>
+                              <div className="text-white/60 text-xs font-bold tracking-widest">
+                                {'$'.repeat(fav.priceRange || 1)}
                               </div>
                               {fav.address && (
                                 <div className="flex items-center gap-1.5 text-white/80 text-[11px] font-medium truncate max-w-[180px]">
@@ -664,26 +893,53 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
 
                               {fav.reviews && fav.reviews.length > 0 && (
                                 <div className="space-y-4">
-                                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-2">Reseñas y Testimonios</p>
-                                  <div className="space-y-3">
-                                    {fav.reviews.map((review, i) => (
-                                      <div key={i} className="bg-slate-50 p-4 rounded-2xl space-y-2">
-                                        <div className="flex justify-between items-center">
-                                          <span className="text-xs font-bold text-slate-800">{review.author}</span>
-                                          <div className="flex gap-0.5">
-                                            {[...Array(5)].map((_, j) => (
-                                              <Star key={j} className={`w-3 h-3 ${j < review.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
-                                            ))}
-                                          </div>
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setExpandedReviewsVendorId(expandedReviewsVendorId === fav.id ? null : fav.id);
+                                    }}
+                                    className="flex items-center justify-between w-full text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-rose-500 transition-colors px-2"
+                                  >
+                                    <span>Reseñas y Testimonios ({fav.reviews.length})</span>
+                                    <ChevronDown className={`w-3 h-3 transition-transform ${expandedReviewsVendorId === fav.id ? 'rotate-180' : ''}`} />
+                                  </button>
+                                  <AnimatePresence>
+                                    {expandedReviewsVendorId === fav.id && (
+                                      <motion.div 
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: 'auto', opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        className="overflow-hidden"
+                                      >
+                                        <div className="space-y-3 py-1">
+                                          {fav.reviews.map((review, i) => (
+                                            <div key={i} className="bg-slate-50 p-4 rounded-2xl space-y-2">
+                                              <div className="flex justify-between items-center">
+                                                <span className="text-xs font-bold text-slate-800">{review.author}</span>
+                                                <div className="flex gap-0.5">
+                                                  {[...Array(5)].map((_, j) => (
+                                                    <Star key={j} className={`w-3 h-3 ${j < review.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
+                                                  ))}
+                                                </div>
+                                              </div>
+                                              <p className="text-xs text-slate-500 italic">"{review.comment}"</p>
+                                            </div>
+                                          ))}
                                         </div>
-                                        <p className="text-xs text-slate-500 italic">"{review.comment}"</p>
-                                      </div>
-                                    ))}
-                                  </div>
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
                                 </div>
                               )}
                               
                               <div className="grid grid-cols-2 gap-4">
+                                <button 
+                                  onClick={() => addToBudget(fav)}
+                                  className="col-span-2 flex items-center justify-center gap-3 py-4 bg-rose-500 text-white rounded-2xl text-xs font-bold shadow-lg shadow-rose-200 hover:bg-rose-600 transition-all"
+                                >
+                                  <Plus className="w-4 h-4" />
+                                  Añadir al Presupuesto
+                                </button>
                                 {fav.phone && (
                                   <a 
                                     href={`tel:${fav.phone}`} 
@@ -721,7 +977,7 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                   ref={carouselRef}
                   className="flex gap-6 overflow-x-auto pb-8 pt-2 px-2 no-scrollbar scroll-smooth snap-x snap-mandatory"
                 >
-                  {favorites.map((fav) => (
+                  {filteredFavorites.map((fav) => (
                     <motion.div 
                       layout
                       key={fav.id}
@@ -741,7 +997,19 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                             alt={fav.name}
                           />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                          <div className="absolute top-6 right-6 z-20">
+                          <div className="absolute top-6 right-6 z-20 flex gap-2">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addToBudget(fav);
+                              }}
+                              className={`p-3 backdrop-blur-md rounded-2xl transition-all ${
+                                addedToBudget.has(fav.id) ? 'bg-emerald-500 text-white' : 'bg-white/20 text-white hover:bg-rose-500'
+                              }`}
+                              title="Añadir al presupuesto"
+                            >
+                              {addedToBudget.has(fav.id) ? <CheckSquare className="w-5 h-5" /> : <Calculator className="w-5 h-5" />}
+                            </button>
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -752,18 +1020,28 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                               <Trash2 className="w-5 h-5" />
                             </button>
                           </div>
-                          <div className="absolute bottom-6 left-8 z-20">
+                          <div className="absolute bottom-6 left-8 z-20 flex flex-wrap gap-2">
                             <span className="bg-rose-500 text-white text-xs font-bold uppercase tracking-widest px-4 py-1.5 rounded-full shadow-lg">
                               {fav.category}
                             </span>
-                            <h3 className="text-2xl font-serif font-bold text-white mt-2">{fav.name}</h3>
+                            {getStatusBadge(fav.openingHours)}
+                            {fav.isAvailable && (
+                              <span className="bg-amber-500/90 backdrop-blur-sm text-white text-xs font-bold uppercase tracking-widest px-4 py-1.5 rounded-full shadow-lg">
+                                Disponible
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="p-8 space-y-6">
                           <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2 text-amber-500 font-bold">
-                              <Star className="w-5 h-5 fill-amber-500" />
-                              <span>{fav.rating || '4.5'}</span>
+                            <div className="flex items-center gap-4">
+                              <div className="flex items-center gap-2 text-amber-500 font-bold">
+                                <Star className="w-5 h-5 fill-amber-500" />
+                                <span>{fav.rating || '4.5'}</span>
+                              </div>
+                              <div className="text-slate-400 text-sm font-bold tracking-widest">
+                                {'$'.repeat(fav.priceRange || 1)}
+                              </div>
                             </div>
                             {fav.isExceedingBudget && (
                               <span className="text-[10px] font-bold text-rose-500 uppercase tracking-widest bg-rose-50 px-2 py-1 rounded-lg">
@@ -786,11 +1064,32 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                                 </div>
                               </div>
                               {fav.openingHours && (
-                                <div className="flex items-start gap-3 text-slate-600 text-sm">
-                                  <Clock className="w-5 h-5 mt-0.5 text-rose-400 flex-shrink-0" />
+                                <div className={`flex items-start gap-4 p-5 rounded-[24px] group/hours transition-all duration-300 border shadow-sm ${
+                                  isVendorOpen(fav.openingHours) === true 
+                                    ? 'bg-emerald-50/80 border-emerald-100 hover:bg-emerald-50' 
+                                    : isVendorOpen(fav.openingHours) === 'closing_soon'
+                                      ? 'bg-amber-50/80 border-amber-100 hover:bg-amber-50'
+                                      : isVendorOpen(fav.openingHours) === false 
+                                        ? 'bg-rose-50/80 border-rose-100 hover:bg-rose-50' 
+                                        : 'bg-slate-50 border-transparent hover:bg-slate-100'
+                                }`}>
+                                  <div className={`p-3 rounded-2xl ${
+                                    isVendorOpen(fav.openingHours) === true ? 'bg-emerald-500 text-white' : isVendorOpen(fav.openingHours) === 'closing_soon' ? 'bg-amber-500 text-white' : isVendorOpen(fav.openingHours) === false ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-500'
+                                  }`}>
+                                    <Clock className="w-5 h-5" />
+                                  </div>
                                   <div className="space-y-1">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Horarios</p>
-                                    <span className="leading-relaxed">{fav.openingHours}</span>
+                                    <div className="flex items-center gap-2">
+                                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Horarios de Atención</p>
+                                      {isVendorOpen(fav.openingHours) !== null && (
+                                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full shadow-sm ${
+                                          isVendorOpen(fav.openingHours) === true ? 'bg-emerald-500 text-white' : isVendorOpen(fav.openingHours) === 'closing_soon' ? 'bg-amber-500 text-white' : 'bg-rose-500 text-white'
+                                        }`}>
+                                          {isVendorOpen(fav.openingHours) === true ? 'Abierto' : isVendorOpen(fav.openingHours) === 'closing_soon' ? 'Cierra pronto' : 'Cerrado'}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-sm leading-relaxed font-bold text-slate-700">{fav.openingHours}</span>
                                   </div>
                                 </div>
                               )}
@@ -810,31 +1109,61 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
 
                             {fav.reviews && fav.reviews.length > 0 && (
                               <div className="space-y-3 pt-4 border-t border-slate-50">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Reseñas</p>
-                                <div className="space-y-2">
-                                  {fav.reviews.slice(0, 2).map((review, i) => (
-                                    <div key={i} className="bg-slate-50 p-3 rounded-xl">
-                                      <div className="flex justify-between items-center mb-1">
-                                        <span className="text-[10px] font-bold text-slate-700">{review.author}</span>
-                                        <div className="flex gap-0.5">
-                                          {[...Array(5)].map((_, j) => (
-                                            <Star key={j} className={`w-2 h-2 ${j < review.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
-                                          ))}
-                                        </div>
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedReviewsVendorId(expandedReviewsVendorId === fav.id ? null : fav.id);
+                                  }}
+                                  className="flex items-center justify-between w-full text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-rose-500 transition-colors px-1"
+                                >
+                                  <span>Historial de reseñas ({fav.reviews.length})</span>
+                                  <ChevronDown className={`w-3 h-3 transition-transform ${expandedReviewsVendorId === fav.id ? 'rotate-180' : ''}`} />
+                                </button>
+                                <AnimatePresence>
+                                  {expandedReviewsVendorId === fav.id && (
+                                    <motion.div 
+                                      initial={{ height: 0, opacity: 0 }}
+                                      animate={{ height: 'auto', opacity: 1 }}
+                                      exit={{ height: 0, opacity: 0 }}
+                                      className="overflow-hidden"
+                                    >
+                                      <div className="space-y-2 py-1">
+                                        {fav.reviews.map((review, i) => (
+                                          <div key={i} className="bg-slate-50 p-3 rounded-xl">
+                                            <div className="flex justify-between items-center mb-1">
+                                              <span className="text-[10px] font-bold text-slate-700">{review.author}</span>
+                                              <div className="flex gap-0.5">
+                                                {[...Array(5)].map((_, j) => (
+                                                  <Star key={j} className={`w-2 h-2 ${j < review.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
+                                                ))}
+                                              </div>
+                                            </div>
+                                            <p className="text-[10px] text-slate-500 italic">"{review.comment}"</p>
+                                          </div>
+                                        ))}
                                       </div>
-                                      <p className="text-[10px] text-slate-500 italic">"{review.comment}"</p>
-                                    </div>
-                                  ))}
-                                </div>
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
                               </div>
                             )}
 
-                            <div className="flex gap-4 pt-2">
+                            <div className="grid grid-cols-2 gap-4 pt-4">
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  addToBudget(fav);
+                                }}
+                                className="col-span-2 flex items-center justify-center gap-2 py-4 bg-rose-500 text-white rounded-2xl text-sm font-bold shadow-lg shadow-rose-200 hover:bg-rose-600 transition-all"
+                              >
+                                <Plus className="w-4 h-4" />
+                                Añadir al Presupuesto
+                              </button>
                               {fav.phone && (
                                 <a 
                                   href={`tel:${fav.phone}`} 
                                   onClick={(e) => e.stopPropagation()}
-                                  className="flex-1 flex items-center justify-center gap-2 py-4 bg-rose-50 rounded-2xl text-rose-500 hover:bg-rose-100 transition-all text-sm font-bold"
+                                  className="flex items-center justify-center gap-2 py-4 bg-rose-50 rounded-2xl text-rose-500 hover:bg-rose-100 transition-all text-sm font-bold"
                                 >
                                   <Phone className="w-4 h-4" />
                                   Llamar
@@ -846,10 +1175,10 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                                   target="_blank" 
                                   rel="noreferrer" 
                                   onClick={(e) => e.stopPropagation()}
-                                  className="flex-1 flex items-center justify-center gap-2 py-4 bg-rose-50 rounded-2xl text-rose-500 hover:bg-rose-100 transition-all text-sm font-bold"
+                                  className="flex items-center justify-center gap-2 py-4 bg-rose-50 rounded-2xl text-rose-500 hover:bg-rose-100 transition-all text-sm font-bold"
                                 >
                                   <Globe className="w-4 h-4" />
-                                  Web
+                                  Sitio Web
                                 </a>
                               )}
                             </div>
@@ -890,7 +1219,7 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
               </div>
             ) : favoritesView === 'list' ? (
               <div className="space-y-4">
-                {favorites.map((fav) => (
+                {filteredFavorites.map((fav) => (
                   <motion.div 
                     layout
                     key={fav.id}
@@ -904,37 +1233,97 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                           alt={fav.name}
                         />
-                        <div className="absolute top-3 left-3">
-                          <span className="bg-white/90 backdrop-blur-md text-rose-500 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full shadow-sm">
+                        <div className="absolute top-3 left-3 flex flex-col gap-2">
+                          <span className="bg-white/90 backdrop-blur-md text-rose-500 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full shadow-sm w-fit">
                             {fav.category}
                           </span>
+                          {getStatusBadge(fav.openingHours)}
+                          {fav.isAvailable && (
+                            <span className="bg-amber-500/90 backdrop-blur-sm text-white text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full shadow-sm w-fit">
+                              Disponible
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="flex-1 p-6 flex flex-col justify-between">
                         <div className="flex justify-between items-start gap-4">
                           <div>
                             <h3 className="text-xl font-serif font-bold text-slate-800 group-hover:text-rose-600 transition-colors">{fav.name}</h3>
-                            <div className="flex items-center gap-2 mt-2">
-                              <div className="flex items-center gap-1 text-amber-500 text-sm font-bold">
-                                <Star className="w-4 h-4 fill-amber-500" />
-                                <span>{fav.rating || '4.5'}</span>
+                            <div className="flex flex-wrap items-center gap-4 mt-3">
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1 bg-amber-500 text-white px-2 py-0.5 rounded-lg text-sm font-bold shadow-sm">
+                                  <Star className="w-3.5 h-3.5 fill-white" />
+                                  <span>{fav.rating || '4.5'}</span>
+                                </div>
+                                <div className="text-slate-400 text-xs font-bold tracking-widest">
+                                  {'$'.repeat(fav.priceRange || 1)}
+                                </div>
                               </div>
-                              <span className="text-slate-300">|</span>
-                              <div className="flex items-center gap-1 text-slate-500 text-xs">
-                                <MapPin className="w-3.5 h-3.5 text-rose-400" />
-                                <span>{fav.address?.split(',')[0]}</span>
-                              </div>
+                              
+                              {fav.openingHours && (
+                                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all ${
+                                  isVendorOpen(fav.openingHours) === true 
+                                    ? 'bg-emerald-50 border-emerald-100 text-emerald-700' 
+                                    : isVendorOpen(fav.openingHours) === false 
+                                      ? 'bg-rose-50 border-rose-100 text-rose-700' 
+                                      : 'bg-slate-50 border-slate-100 text-slate-600'
+                                }`}>
+                                  <Clock className={`w-3.5 h-3.5 ${
+                                    isVendorOpen(fav.openingHours) === true ? 'text-emerald-500' : isVendorOpen(fav.openingHours) === false ? 'text-rose-500' : 'text-rose-400'
+                                  }`} />
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold truncate max-w-[150px]">{fav.openingHours}</span>
+                                    {isVendorOpen(fav.openingHours) !== null && (
+                                      <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full ${
+                                        isVendorOpen(fav.openingHours) ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
+                                      }`}>
+                                        {isVendorOpen(fav.openingHours) ? 'Abierto' : 'Cerrado'}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 text-slate-500 text-xs mt-3">
+                              <MapPin className="w-3.5 h-3.5 text-rose-400" />
+                              <span className="truncate">{fav.address}</span>
                             </div>
                           </div>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeFavorite(fav.id);
-                            }}
-                            className="p-2 text-slate-300 hover:text-rose-500 transition-colors"
-                          >
-                            <Trash2 className="w-5 h-5" />
-                          </button>
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addToBudget(fav);
+                              }}
+                              className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${
+                                addedToBudget.has(fav.id) 
+                                  ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' 
+                                  : 'bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white'
+                              }`}
+                              title="Añadir al presupuesto"
+                            >
+                              {addedToBudget.has(fav.id) ? (
+                                <>
+                                  <CheckSquare className="w-3.5 h-3.5" />
+                                  Añadido
+                                </>
+                              ) : (
+                                <>
+                                  <Calculator className="w-3.5 h-3.5" />
+                                  Presupuesto
+                                </>
+                              )}
+                            </button>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeFavorite(fav.id);
+                              }}
+                              className="p-2 text-slate-300 hover:text-rose-500 transition-colors"
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
+                          </div>
                         </div>
                         
                         <div className="flex items-center gap-2 text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-4">
@@ -963,11 +1352,32 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                                   </div>
                                 </div>
                                 {fav.openingHours && (
-                                  <div className="flex items-start gap-3">
-                                    <Clock className="w-4 h-4 mt-0.5 text-rose-400" />
+                                  <div className={`flex items-start gap-4 p-5 rounded-[24px] group/hours transition-all duration-300 border shadow-sm ${
+                                    isVendorOpen(fav.openingHours) === true 
+                                      ? 'bg-emerald-50/80 border-emerald-100 hover:bg-emerald-50' 
+                                      : isVendorOpen(fav.openingHours) === 'closing_soon'
+                                        ? 'bg-amber-50/80 border-amber-100 hover:bg-amber-50'
+                                        : isVendorOpen(fav.openingHours) === false 
+                                          ? 'bg-rose-50/80 border-rose-100 hover:bg-rose-50' 
+                                          : 'bg-slate-50 border-transparent hover:bg-slate-100'
+                                  }`}>
+                                    <div className={`p-3 rounded-2xl ${
+                                      isVendorOpen(fav.openingHours) === true ? 'bg-emerald-500 text-white' : isVendorOpen(fav.openingHours) === 'closing_soon' ? 'bg-amber-500 text-white' : isVendorOpen(fav.openingHours) === false ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-500'
+                                    }`}>
+                                      <Clock className="w-5 h-5" />
+                                    </div>
                                     <div className="space-y-1">
-                                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Horarios de Atención</p>
-                                      <span className="text-sm text-slate-600">{fav.openingHours}</span>
+                                      <div className="flex items-center gap-2">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Horarios de Atención</p>
+                                        {isVendorOpen(fav.openingHours) !== null && (
+                                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full shadow-sm ${
+                                            isVendorOpen(fav.openingHours) === true ? 'bg-emerald-500 text-white' : isVendorOpen(fav.openingHours) === 'closing_soon' ? 'bg-amber-500 text-white' : isVendorOpen(fav.openingHours) === false ? 'bg-rose-500 text-white' : 'bg-rose-500 text-white'
+                                          }`}>
+                                            {isVendorOpen(fav.openingHours) === true ? 'Abierto' : isVendorOpen(fav.openingHours) === 'closing_soon' ? 'Cierra pronto' : 'Cerrado'}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <span className="text-sm text-slate-700 leading-relaxed font-bold">{fav.openingHours}</span>
                                     </div>
                                   </div>
                                 )}
@@ -982,25 +1392,52 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                               <div className="space-y-4">
                                 {fav.reviews && fav.reviews.length > 0 && (
                                   <div className="space-y-3">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Reseñas recientes</p>
-                                    <div className="space-y-2">
-                                      {fav.reviews.slice(0, 2).map((review, i) => (
-                                        <div key={i} className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-                                          <div className="flex justify-between items-center mb-1">
-                                            <span className="text-[10px] font-bold text-slate-700">{review.author}</span>
-                                            <div className="flex gap-0.5">
-                                              {[...Array(5)].map((_, j) => (
-                                                <Star key={j} className={`w-2 h-2 ${j < review.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
-                                              ))}
-                                            </div>
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setExpandedReviewsVendorId(expandedReviewsVendorId === fav.id ? null : fav.id);
+                                      }}
+                                      className="flex items-center justify-between w-full text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-rose-500 transition-colors"
+                                    >
+                                      <span>Reseñas recientes ({fav.reviews.length})</span>
+                                      <ChevronDown className={`w-3 h-3 transition-transform ${expandedReviewsVendorId === fav.id ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    <AnimatePresence>
+                                      {expandedReviewsVendorId === fav.id && (
+                                        <motion.div 
+                                          initial={{ height: 0, opacity: 0 }}
+                                          animate={{ height: 'auto', opacity: 1 }}
+                                          exit={{ height: 0, opacity: 0 }}
+                                          className="overflow-hidden"
+                                        >
+                                          <div className="space-y-2 max-h-40 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200 py-1">
+                                            {fav.reviews.map((review, i) => (
+                                              <div key={i} className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                                                <div className="flex justify-between items-center mb-1">
+                                                  <span className="text-[10px] font-bold text-slate-700">{review.author}</span>
+                                                  <div className="flex gap-0.5">
+                                                    {[...Array(5)].map((_, j) => (
+                                                      <Star key={j} className={`w-2 h-2 ${j < review.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                                <p className="text-[10px] text-slate-500 italic">"{review.comment}"</p>
+                                              </div>
+                                            ))}
                                           </div>
-                                          <p className="text-[10px] text-slate-500 italic">"{review.comment}"</p>
-                                        </div>
-                                      ))}
-                                    </div>
+                                        </motion.div>
+                                      )}
+                                    </AnimatePresence>
                                   </div>
                                 )}
                                 <div className="flex gap-3 items-end">
+                                  <button 
+                                    onClick={() => addToBudget(fav)}
+                                    className="flex-1 py-3 bg-rose-500 text-white rounded-xl text-center text-xs font-bold hover:bg-rose-600 transition-all flex items-center justify-center gap-2"
+                                  >
+                                    <Plus className="w-4 h-4" />
+                                    Presupuesto
+                                  </button>
                                   {fav.phone && (
                                     <a 
                                       href={`tel:${fav.phone}`}
@@ -1040,7 +1477,7 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
-                    {favorites.map((fav) => (
+                    {filteredFavorites.map((fav) => (
                       fav.lat && fav.lon && (
                         <Marker 
                           key={fav.id} 
@@ -1053,16 +1490,46 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                             <div className="p-2 space-y-2 min-w-[200px]">
                               <h4 className="font-bold text-slate-800">{fav.name}</h4>
                               <p className="text-xs text-slate-500">{fav.category}</p>
-                              <div className="flex items-center gap-1 text-amber-500 text-xs font-bold">
-                                <Star className="w-3 h-3 fill-amber-500" />
-                                <span>{fav.rating || '4.5'}</span>
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-1 text-amber-500 text-xs font-bold">
+                                  <Star className="w-3 h-3 fill-amber-500" />
+                                  <span>{fav.rating || '4.5'}</span>
+                                </div>
+                                <div className="text-slate-400 text-[10px] font-bold tracking-widest">
+                                  {'$'.repeat(fav.priceRange || 1)}
+                                </div>
                               </div>
-                              <button 
-                                onClick={() => setExpandedVendorId(fav.id)}
-                                className="w-full py-2 bg-rose-500 text-white text-[10px] font-bold uppercase tracking-widest rounded-lg"
-                              >
-                                Ver Detalles
-                              </button>
+                              {fav.isAvailable && (
+                                <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">
+                                  Disponible ahora
+                                </span>
+                              )}
+                              <div className="flex items-center gap-2">
+                                <button 
+                                  onClick={() => setExpandedVendorId(fav.id)}
+                                  className="flex-1 py-2 bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-widest rounded-lg hover:bg-slate-200 transition-all"
+                                >
+                                  Detalles
+                                </button>
+                                <button 
+                                  onClick={() => addToBudget(fav)}
+                                  className={`flex-1 py-2 text-white text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all flex items-center justify-center gap-1 ${
+                                    addedToBudget.has(fav.id) ? 'bg-emerald-500' : 'bg-rose-500 hover:bg-rose-600'
+                                  }`}
+                                >
+                                  {addedToBudget.has(fav.id) ? (
+                                    <>
+                                      <CheckSquare className="w-3 h-3" />
+                                      Añadido
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Calculator className="w-3 h-3" />
+                                      Presupuesto
+                                    </>
+                                  )}
+                                </button>
+                              </div>
                             </div>
                           </Popup>
                         </Marker>
@@ -1073,7 +1540,7 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                 
                 {/* Expanded Detail Panel for Map View */}
                 <AnimatePresence>
-                  {expandedVendorId && favorites.find(f => f.id === expandedVendorId) && (
+                  {expandedVendorId && filteredFavorites.find(f => f.id === expandedVendorId) && (
                     <motion.div
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -1088,26 +1555,36 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                       </button>
                       
                       {(() => {
-                        const fav = favorites.find(f => f.id === expandedVendorId)!;
+                        const fav = filteredFavorites.find(f => f.id === expandedVendorId)!;
                         return (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                             <div className="space-y-6">
-                              <div className="h-64 rounded-3xl overflow-hidden">
+                              <div className="h-64 rounded-3xl overflow-hidden relative">
                                 <img 
                                   src={fav.photo || 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80'} 
                                   className="w-full h-full object-cover"
                                   alt={fav.name}
                                 />
+                                {fav.isAvailable && (
+                                  <div className="absolute top-4 left-4">
+                                    <span className="bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full shadow-lg">
+                                      Disponible ahora
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                               <div>
                                 <h3 className="text-3xl font-serif font-bold text-slate-800">{fav.name}</h3>
-                                <div className="flex items-center gap-2 mt-2">
+                                <div className="flex items-center gap-4 mt-2">
                                   <span className="bg-rose-50 text-rose-500 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
                                     {fav.category}
                                   </span>
                                   <div className="flex items-center gap-1 text-amber-500 font-bold">
                                     <Star className="w-4 h-4 fill-amber-500" />
                                     <span>{fav.rating || '4.5'}</span>
+                                  </div>
+                                  <div className="text-slate-400 text-sm font-bold tracking-widest">
+                                    {'$'.repeat(fav.priceRange || 1)}
                                   </div>
                                 </div>
                               </div>
@@ -1135,22 +1612,42 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                               
                               {fav.reviews && fav.reviews.length > 0 && (
                                 <div className="space-y-4">
-                                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-2">Reseñas de clientes</p>
-                                  <div className="space-y-3">
-                                    {fav.reviews.map((review, i) => (
-                                      <div key={i} className="bg-slate-50 p-4 rounded-2xl space-y-2">
-                                        <div className="flex justify-between items-center">
-                                          <span className="text-xs font-bold text-slate-800">{review.author}</span>
-                                          <div className="flex gap-0.5">
-                                            {[...Array(5)].map((_, j) => (
-                                              <Star key={j} className={`w-3 h-3 ${j < review.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
-                                            ))}
-                                          </div>
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setExpandedReviewsVendorId(expandedReviewsVendorId === fav.id ? null : fav.id);
+                                    }}
+                                    className="flex items-center justify-between w-full text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-rose-500 transition-colors px-2"
+                                  >
+                                    <span>Reseñas de clientes ({fav.reviews.length})</span>
+                                    <ChevronDown className={`w-3 h-3 transition-transform ${expandedReviewsVendorId === fav.id ? 'rotate-180' : ''}`} />
+                                  </button>
+                                  <AnimatePresence>
+                                    {expandedReviewsVendorId === fav.id && (
+                                      <motion.div 
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: 'auto', opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        className="overflow-hidden"
+                                      >
+                                        <div className="space-y-3 py-1">
+                                          {fav.reviews.map((review, i) => (
+                                            <div key={i} className="bg-slate-50 p-4 rounded-2xl space-y-2">
+                                              <div className="flex justify-between items-center">
+                                                <span className="text-xs font-bold text-slate-800">{review.author}</span>
+                                                <div className="flex gap-0.5">
+                                                  {[...Array(5)].map((_, j) => (
+                                                    <Star key={j} className={`w-3 h-3 ${j < review.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
+                                                  ))}
+                                                </div>
+                                              </div>
+                                              <p className="text-xs text-slate-500 italic">"{review.comment}"</p>
+                                            </div>
+                                          ))}
                                         </div>
-                                        <p className="text-xs text-slate-500 italic">"{review.comment}"</p>
-                                      </div>
-                                    ))}
-                                  </div>
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
                                 </div>
                               )}
                               
@@ -1186,16 +1683,6 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
             exit={{ opacity: 0, y: -20 }}
             className="space-y-6"
           >
-            <div className="flex items-center justify-between">
-              <h3 className="text-2xl font-serif font-bold text-slate-800">Resultados en la zona</h3>
-              {loadingVendors && (
-                <div className="flex items-center gap-2 text-xs font-medium text-slate-600 bg-white px-4 py-2 rounded-full shadow-sm border border-slate-100">
-                  <Loader2 className="w-3 h-3 animate-spin text-rose-500" />
-                  Buscando proveedores...
-                </div>
-              )}
-            </div>
-
             <div className="flex items-center justify-between">
               <h3 className="text-2xl font-serif font-bold text-slate-800">Resultados en la zona</h3>
               <div className="flex items-center gap-4">
@@ -1264,7 +1751,19 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                           className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110"
                           alt={vendor.name}
                         />
-                        <div className="absolute top-4 right-4 z-20">
+                        <div className="absolute top-4 right-4 z-20 flex gap-2">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addToBudget(vendor);
+                            }}
+                            className={`p-2.5 backdrop-blur-md rounded-xl transition-all shadow-sm ${
+                              addedToBudget.has(vendor.id) ? 'bg-emerald-500 text-white' : 'bg-white/80 text-slate-400 hover:text-rose-500 hover:scale-110'
+                            }`}
+                            title="Añadir al presupuesto"
+                          >
+                            {addedToBudget.has(vendor.id) ? <CheckSquare className="w-4 h-4" /> : <Calculator className="w-4 h-4" />}
+                          </button>
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1281,8 +1780,9 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                           <span className="bg-rose-500/90 backdrop-blur-sm text-white text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-full shadow-lg">
                             {vendor.category}
                           </span>
+                          {getStatusBadge(vendor.openingHours)}
                           {vendor.isAvailable && (
-                            <span className="bg-emerald-500/90 backdrop-blur-sm text-white text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-full shadow-lg">
+                            <span className="bg-amber-500/90 backdrop-blur-sm text-white text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-full shadow-lg">
                               Disponible
                             </span>
                           )}
@@ -1320,11 +1820,32 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                               </div>
                               
                               {vendor.openingHours && (
-                                <div className="flex items-start gap-3 bg-slate-50 p-4 rounded-2xl group/hours transition-colors hover:bg-slate-100">
-                                  <Clock className="w-4 h-4 mt-0.5 text-rose-500 flex-shrink-0" />
+                                <div className={`flex items-start gap-4 p-5 rounded-[24px] group/hours transition-all duration-300 border shadow-sm ${
+                                  isVendorOpen(vendor.openingHours) === true 
+                                    ? 'bg-emerald-50/80 border-emerald-100 hover:bg-emerald-50' 
+                                    : isVendorOpen(vendor.openingHours) === 'closing_soon'
+                                      ? 'bg-amber-50/80 border-amber-100 hover:bg-amber-50'
+                                      : isVendorOpen(vendor.openingHours) === false 
+                                        ? 'bg-rose-50/80 border-rose-100 hover:bg-rose-50' 
+                                        : 'bg-slate-50 border-transparent hover:bg-slate-100'
+                                }`}>
+                                  <div className={`p-3 rounded-2xl ${
+                                    isVendorOpen(vendor.openingHours) === true ? 'bg-emerald-500 text-white' : isVendorOpen(vendor.openingHours) === 'closing_soon' ? 'bg-amber-500 text-white' : isVendorOpen(vendor.openingHours) === false ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-500'
+                                  }`}>
+                                    <Clock className="w-5 h-5" />
+                                  </div>
                                   <div className="space-y-0.5">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Horarios de Atención</p>
-                                    <span className="text-xs text-slate-600 leading-relaxed font-medium">{vendor.openingHours}</span>
+                                    <div className="flex items-center gap-2">
+                                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Horarios de Atención</p>
+                                      {isVendorOpen(vendor.openingHours) !== null && (
+                                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full shadow-sm ${
+                                          isVendorOpen(vendor.openingHours) === true ? 'bg-emerald-500 text-white' : isVendorOpen(vendor.openingHours) === 'closing_soon' ? 'bg-amber-500 text-white' : isVendorOpen(vendor.openingHours) === false ? 'bg-rose-500 text-white' : 'bg-rose-500 text-white'
+                                        }`}>
+                                          {isVendorOpen(vendor.openingHours) === true ? 'Abierto' : isVendorOpen(vendor.openingHours) === 'closing_soon' ? 'Cierra pronto' : 'Cerrado'}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="text-sm text-slate-700 leading-relaxed font-bold">{vendor.openingHours}</span>
                                   </div>
                                 </div>
                               )}
@@ -1332,31 +1853,61 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
 
                             {vendor.reviews && vendor.reviews.length > 0 && (
                               <div className="space-y-3">
-                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 px-1">Reseñas de clientes</p>
-                                <div className="space-y-2">
-                                  {vendor.reviews.slice(0, 2).map((review, i) => (
-                                    <div key={i} className="bg-slate-50/50 p-3 rounded-xl border border-slate-100">
-                                      <div className="flex justify-between items-center mb-1">
-                                        <span className="text-[10px] font-bold text-slate-700">{review.author}</span>
-                                        <div className="flex gap-0.5">
-                                          {[...Array(5)].map((_, j) => (
-                                            <Star key={j} className={`w-2.5 h-2.5 ${j < review.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
-                                          ))}
-                                        </div>
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedReviewsVendorId(expandedReviewsVendorId === vendor.id ? null : vendor.id);
+                                  }}
+                                  className="flex items-center justify-between w-full text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-rose-500 transition-colors px-1"
+                                >
+                                  <span>Historial de reseñas ({vendor.reviews.length})</span>
+                                  <ChevronDown className={`w-3 h-3 transition-transform ${expandedReviewsVendorId === vendor.id ? 'rotate-180' : ''}`} />
+                                </button>
+                                <AnimatePresence>
+                                  {expandedReviewsVendorId === vendor.id && (
+                                    <motion.div 
+                                      initial={{ height: 0, opacity: 0 }}
+                                      animate={{ height: 'auto', opacity: 1 }}
+                                      exit={{ height: 0, opacity: 0 }}
+                                      className="overflow-hidden"
+                                    >
+                                      <div className="space-y-2 py-1 max-h-48 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200">
+                                        {vendor.reviews.map((review, i) => (
+                                          <div key={i} className="bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                                            <div className="flex justify-between items-center mb-1">
+                                              <span className="text-[10px] font-bold text-slate-700">{review.author}</span>
+                                              <div className="flex gap-0.5">
+                                                {[...Array(5)].map((_, j) => (
+                                                  <Star key={j} className={`w-2.5 h-2.5 ${j < review.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
+                                                ))}
+                                              </div>
+                                            </div>
+                                            <p className="text-[10px] text-slate-500 italic">"{review.comment}"</p>
+                                          </div>
+                                        ))}
                                       </div>
-                                      <p className="text-[10px] text-slate-500 italic">"{review.comment}"</p>
-                                    </div>
-                                  ))}
-                                </div>
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
                               </div>
                             )}
                             
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-2 gap-3 pt-2">
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  addToBudget(vendor);
+                                }}
+                                className="col-span-2 flex items-center justify-center gap-2 py-3.5 bg-rose-500 text-white rounded-2xl text-[11px] font-bold shadow-lg shadow-rose-200 hover:bg-rose-600 transition-all"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                Añadir al Presupuesto
+                              </button>
                               {vendor.phone && (
                                 <a 
                                   href={`tel:${vendor.phone}`} 
                                   onClick={(e) => e.stopPropagation()}
-                                  className="flex-1 flex items-center justify-center gap-2 py-3.5 bg-white border border-slate-100 rounded-2xl text-slate-700 hover:bg-rose-500 hover:text-white hover:border-rose-500 transition-all text-[11px] font-bold shadow-sm"
+                                  className="flex items-center justify-center gap-2 py-3.5 bg-white border border-slate-100 rounded-2xl text-slate-700 hover:bg-rose-500 hover:text-white hover:border-rose-500 transition-all text-[11px] font-bold shadow-sm"
                                 >
                                   <Phone className="w-3.5 h-3.5" />
                                   Llamar
@@ -1368,7 +1919,7 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                                   target="_blank" 
                                   rel="noreferrer" 
                                   onClick={(e) => e.stopPropagation()}
-                                  className="flex-1 flex items-center justify-center gap-2 py-3.5 bg-white border border-slate-100 rounded-2xl text-slate-700 hover:bg-rose-500 hover:text-white hover:border-rose-500 transition-all text-[11px] font-bold shadow-sm"
+                                  className="flex items-center justify-center gap-2 py-3.5 bg-white border border-slate-100 rounded-2xl text-slate-700 hover:bg-rose-500 hover:text-white hover:border-rose-500 transition-all text-[11px] font-bold shadow-sm"
                                 >
                                   <Globe className="w-3.5 h-3.5" />
                                   Sitio Web
@@ -1410,39 +1961,99 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                           alt={vendor.name}
                         />
-                        <div className="absolute top-3 left-3 flex gap-2">
-                          <span className="bg-white/90 backdrop-blur-md text-rose-500 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full shadow-sm">
+                        <div className="absolute top-3 left-3 flex flex-col gap-2">
+                          <span className="bg-white/90 backdrop-blur-md text-rose-500 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full shadow-sm w-fit">
                             {vendor.category}
                           </span>
+                          {getStatusBadge(vendor.openingHours)}
+                          {vendor.isAvailable && (
+                            <span className="bg-amber-500/90 backdrop-blur-sm text-white text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full shadow-sm w-fit">
+                              Disponible
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="flex-1 p-6 flex flex-col justify-between">
                         <div className="flex justify-between items-start gap-4">
                           <div>
                             <h3 className="text-xl font-serif font-bold text-slate-800 group-hover:text-rose-600 transition-colors">{vendor.name}</h3>
-                            <div className="flex items-center gap-2 mt-2">
-                              <div className="flex items-center gap-1 text-amber-500 text-sm font-bold">
-                                <Star className="w-4 h-4 fill-amber-500" />
-                                <span>{vendor.rating || '4.5'}</span>
+                            <div className="flex flex-wrap items-center gap-4 mt-3">
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1 bg-amber-500 text-white px-2 py-0.5 rounded-lg text-sm font-bold shadow-sm">
+                                  <Star className="w-3.5 h-3.5 fill-white" />
+                                  <span>{vendor.rating || '4.5'}</span>
+                                </div>
+                                <div className="text-slate-400 text-xs font-bold tracking-widest">
+                                  {'$'.repeat(vendor.priceRange || 1)}
+                                </div>
                               </div>
-                              <span className="text-slate-300">|</span>
-                              <div className="flex items-center gap-1 text-slate-500 text-xs">
-                                <MapPin className="w-3.5 h-3.5 text-rose-400" />
-                                <span className="truncate max-w-[200px]">{vendor.address}</span>
-                              </div>
+                              
+                              {vendor.openingHours && (
+                                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all ${
+                                  isVendorOpen(vendor.openingHours) === true 
+                                    ? 'bg-emerald-50 border-emerald-100 text-emerald-700' 
+                                    : isVendorOpen(vendor.openingHours) === false 
+                                      ? 'bg-rose-50 border-rose-100 text-rose-700' 
+                                      : 'bg-slate-50 border-slate-100 text-slate-600'
+                                }`}>
+                                  <Clock className={`w-3.5 h-3.5 ${
+                                    isVendorOpen(vendor.openingHours) === true ? 'text-emerald-500' : isVendorOpen(vendor.openingHours) === false ? 'text-rose-500' : 'text-rose-400'
+                                  }`} />
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold truncate max-w-[150px]">{vendor.openingHours}</span>
+                                    {isVendorOpen(vendor.openingHours) !== null && (
+                                      <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full ${
+                                        isVendorOpen(vendor.openingHours) ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
+                                      }`}>
+                                        {isVendorOpen(vendor.openingHours) ? 'Abierto' : 'Cerrado'}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 text-slate-500 text-xs mt-3">
+                              <MapPin className="w-3.5 h-3.5 text-rose-400" />
+                              <span className="truncate">{vendor.address}</span>
                             </div>
                           </div>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleFavorite(vendor);
-                            }}
-                            className={`p-2 rounded-xl transition-all ${
-                              isFavorite(vendor.id) ? 'text-rose-500' : 'text-slate-300 hover:text-rose-500'
-                            }`}
-                          >
-                            <Heart className={`w-5 h-5 ${isFavorite(vendor.id) ? 'fill-rose-500' : ''}`} />
-                          </button>
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addToBudget(vendor);
+                              }}
+                              className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all ${
+                                addedToBudget.has(vendor.id) 
+                                  ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' 
+                                  : 'bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white'
+                              }`}
+                              title="Añadir al presupuesto"
+                            >
+                              {addedToBudget.has(vendor.id) ? (
+                                <>
+                                  <CheckSquare className="w-3.5 h-3.5" />
+                                  Añadido
+                                </>
+                              ) : (
+                                <>
+                                  <Calculator className="w-3.5 h-3.5" />
+                                  Presupuesto
+                                </>
+                              )}
+                            </button>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFavorite(vendor);
+                              }}
+                              className={`p-2 rounded-xl transition-all ${
+                                isFavorite(vendor.id) ? 'text-rose-500' : 'text-slate-300 hover:text-rose-500'
+                              }`}
+                            >
+                              <Heart className={`w-5 h-5 ${isFavorite(vendor.id) ? 'fill-rose-500' : ''}`} />
+                            </button>
+                          </div>
                         </div>
                         
                         <div className="flex items-center gap-2 text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-4">
@@ -1471,44 +2082,93 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                                   </div>
                                 </div>
                                 {vendor.openingHours && (
-                                  <div className="flex items-start gap-3">
-                                    <Clock className="w-4 h-4 mt-0.5 text-rose-400" />
+                                  <div className={`flex items-start gap-4 p-5 rounded-[24px] group/hours transition-all duration-300 border shadow-sm ${
+                                    isVendorOpen(vendor.openingHours) === true 
+                                      ? 'bg-emerald-50/80 border-emerald-100 hover:bg-emerald-50' 
+                                      : isVendorOpen(vendor.openingHours) === 'closing_soon'
+                                        ? 'bg-amber-50/80 border-amber-100 hover:bg-amber-50'
+                                        : isVendorOpen(vendor.openingHours) === false 
+                                          ? 'bg-rose-50/80 border-rose-100 hover:bg-rose-50' 
+                                          : 'bg-slate-50 border-transparent hover:bg-slate-100'
+                                  }`}>
+                                    <div className={`p-3 rounded-2xl ${
+                                      isVendorOpen(vendor.openingHours) === true ? 'bg-emerald-500 text-white' : isVendorOpen(vendor.openingHours) === 'closing_soon' ? 'bg-amber-500 text-white' : isVendorOpen(vendor.openingHours) === false ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-500'
+                                    }`}>
+                                      <Clock className="w-5 h-5" />
+                                    </div>
                                     <div className="space-y-1">
-                                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Horarios de Atención</p>
-                                      <span className="text-sm text-slate-600">{vendor.openingHours}</span>
+                                      <div className="flex items-center gap-2">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Horarios de Atención</p>
+                                        {isVendorOpen(vendor.openingHours) !== null && (
+                                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full shadow-sm ${
+                                            isVendorOpen(vendor.openingHours) === true ? 'bg-emerald-500 text-white' : isVendorOpen(vendor.openingHours) === 'closing_soon' ? 'bg-amber-500 text-white' : isVendorOpen(vendor.openingHours) === false ? 'bg-rose-500 text-white' : 'bg-rose-500 text-white'
+                                          }`}>
+                                            {isVendorOpen(vendor.openingHours) === true ? 'Abierto' : isVendorOpen(vendor.openingHours) === 'closing_soon' ? 'Cierra pronto' : 'Cerrado'}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <span className="text-sm text-slate-700 leading-relaxed font-bold">{vendor.openingHours}</span>
                                     </div>
                                   </div>
-                                )}
-                              </div>
-                              
-                              <div className="space-y-4">
-                                {vendor.reviews && vendor.reviews.length > 0 && (
-                                  <div className="space-y-3">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Reseñas recientes</p>
-                                    <div className="space-y-2">
-                                      {vendor.reviews.slice(0, 2).map((review, i) => (
-                                        <div key={i} className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-                                          <div className="flex justify-between items-center mb-1">
-                                            <span className="text-[10px] font-bold text-slate-700">{review.author}</span>
-                                            <div className="flex gap-0.5">
-                                              {[...Array(5)].map((_, j) => (
-                                                <Star key={j} className={`w-2 h-2 ${j < review.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
+                                          {vendor.reviews && vendor.reviews.length > 0 && (
+                                    <div className="space-y-3">
+                                      <button 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setExpandedReviewsVendorId(expandedReviewsVendorId === vendor.id ? null : vendor.id);
+                                        }}
+                                        className="flex items-center justify-between w-full text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-rose-500 transition-colors"
+                                      >
+                                        <span>Historial de reseñas ({vendor.reviews.length})</span>
+                                        <ChevronDown className={`w-3 h-3 transition-transform ${expandedReviewsVendorId === vendor.id ? 'rotate-180' : ''}`} />
+                                      </button>
+                                      <AnimatePresence>
+                                        {expandedReviewsVendorId === vendor.id && (
+                                          <motion.div 
+                                            initial={{ height: 0, opacity: 0 }}
+                                            animate={{ height: 'auto', opacity: 1 }}
+                                            exit={{ height: 0, opacity: 0 }}
+                                            className="overflow-hidden"
+                                          >
+                                            <div className="space-y-2 max-h-40 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200 py-1">
+                                              {vendor.reviews.map((review, i) => (
+                                                <div key={i} className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                                                  <div className="flex justify-between items-center mb-1">
+                                                    <span className="text-[10px] font-bold text-slate-700">{review.author}</span>
+                                                    <div className="flex gap-0.5">
+                                                      {[...Array(5)].map((_, j) => (
+                                                        <Star key={j} className={`w-2 h-2 ${j < review.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
+                                                      ))}
+                                                    </div>
+                                                  </div>
+                                                  <p className="text-[10px] text-slate-500 italic">"{review.comment}"</p>
+                                                </div>
                                               ))}
                                             </div>
-                                          </div>
-                                          <p className="text-[10px] text-slate-500 italic">"{review.comment}"</p>
-                                        </div>
-                                      ))}
+                                          </motion.div>
+                                        )}
+                                      </AnimatePresence>
                                     </div>
-                                  </div>
-                                )}
-                                <div className="flex gap-3 items-end">
+                                  )}
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 pt-2">
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      addToBudget(vendor);
+                                    }}
+                                    className="col-span-2 flex items-center justify-center gap-2 py-3 bg-rose-500 text-white rounded-xl text-xs font-bold hover:bg-rose-600 transition-all shadow-lg shadow-rose-100"
+                                  >
+                                    <Plus className="w-4 h-4" />
+                                    Añadir al Presupuesto
+                                  </button>
                                   {vendor.phone && (
                                     <a 
                                       href={`tel:${vendor.phone}`}
                                       onClick={(e) => e.stopPropagation()}
-                                      className="flex-1 py-3 bg-white border border-slate-200 rounded-xl text-center text-xs font-bold text-slate-700 hover:bg-rose-500 hover:text-white hover:border-rose-500 transition-all"
+                                      className="flex items-center justify-center gap-2 py-3 bg-white border border-slate-200 rounded-xl text-center text-xs font-bold text-slate-700 hover:bg-rose-500 hover:text-white hover:border-rose-500 transition-all"
                                     >
+                                      <Phone className="w-3.5 h-3.5" />
                                       Llamar
                                     </a>
                                   )}
@@ -1518,8 +2178,9 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                                       target="_blank"
                                       rel="noreferrer"
                                       onClick={(e) => e.stopPropagation()}
-                                      className="flex-1 py-3 bg-white border border-slate-200 rounded-xl text-center text-xs font-bold text-slate-700 hover:bg-rose-500 hover:text-white hover:border-rose-500 transition-all"
+                                      className="flex items-center justify-center gap-2 py-3 bg-white border border-slate-200 rounded-xl text-center text-xs font-bold text-slate-700 hover:bg-rose-500 hover:text-white hover:border-rose-500 transition-all"
                                     >
+                                      <Globe className="w-3.5 h-3.5" />
                                       Sitio Web
                                     </a>
                                   )}
@@ -1558,12 +2219,32 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                               <Star className="w-3 h-3 fill-amber-500" />
                               <span>{vendor.rating || '4.5'}</span>
                             </div>
-                            <button 
-                              onClick={() => setExpandedVendorId(vendor.id)}
-                              className="w-full py-2 bg-rose-500 text-white text-[10px] font-bold uppercase tracking-widest rounded-lg"
-                            >
-                              Ver Detalles
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button 
+                                onClick={() => setExpandedVendorId(vendor.id)}
+                                className="flex-1 py-2 bg-slate-100 text-slate-600 text-[10px] font-bold uppercase tracking-widest rounded-lg hover:bg-slate-200 transition-all"
+                              >
+                                Detalles
+                              </button>
+                              <button 
+                                onClick={() => addToBudget(vendor)}
+                                className={`flex-1 py-2 text-white text-[10px] font-bold uppercase tracking-widest rounded-lg transition-all flex items-center justify-center gap-1 ${
+                                  addedToBudget.has(vendor.id) ? 'bg-emerald-500' : 'bg-rose-500 hover:bg-rose-600'
+                                }`}
+                              >
+                                {addedToBudget.has(vendor.id) ? (
+                                  <>
+                                    <CheckSquare className="w-3 h-3" />
+                                    Añadido
+                                  </>
+                                ) : (
+                                  <>
+                                    <Calculator className="w-3 h-3" />
+                                    Presupuesto
+                                  </>
+                                )}
+                              </button>
+                            </div>
                           </div>
                         </Popup>
                       </Marker>
@@ -1635,28 +2316,55 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                               
                               {vendor.reviews && vendor.reviews.length > 0 && (
                                 <div className="space-y-4">
-                                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 px-2">Reseñas de clientes</p>
-                                  <div className="space-y-3">
-                                    {vendor.reviews.map((review, i) => (
-                                      <div key={i} className="bg-slate-50 p-4 rounded-2xl space-y-2">
-                                        <div className="flex justify-between items-center">
-                                          <span className="text-xs font-bold text-slate-800">{review.author}</span>
-                                          <div className="flex gap-0.5">
-                                            {[...Array(5)].map((_, j) => (
-                                              <Star key={j} className={`w-3 h-3 ${j < review.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
-                                            ))}
-                                          </div>
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setExpandedReviewsVendorId(expandedReviewsVendorId === vendor.id ? null : vendor.id);
+                                    }}
+                                    className="flex items-center justify-between w-full text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-rose-500 transition-colors px-2"
+                                  >
+                                    <span>Reseñas de clientes ({vendor.reviews.length})</span>
+                                    <ChevronDown className={`w-3 h-3 transition-transform ${expandedReviewsVendorId === vendor.id ? 'rotate-180' : ''}`} />
+                                  </button>
+                                  <AnimatePresence>
+                                    {expandedReviewsVendorId === vendor.id && (
+                                      <motion.div 
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: 'auto', opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        className="overflow-hidden"
+                                      >
+                                        <div className="space-y-3 py-1">
+                                          {vendor.reviews.map((review, i) => (
+                                            <div key={i} className="bg-slate-50 p-4 rounded-2xl space-y-2">
+                                              <div className="flex justify-between items-center">
+                                                <span className="text-xs font-bold text-slate-800">{review.author}</span>
+                                                <div className="flex gap-0.5">
+                                                  {[...Array(5)].map((_, j) => (
+                                                    <Star key={j} className={`w-3 h-3 ${j < review.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
+                                                  ))}
+                                                </div>
+                                              </div>
+                                              <p className="text-xs text-slate-500 italic">"{review.comment}"</p>
+                                            </div>
+                                          ))}
                                         </div>
-                                        <p className="text-xs text-slate-500 italic">"{review.comment}"</p>
-                                      </div>
-                                    ))}
-                                  </div>
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
                                 </div>
                               )}
                               
                               <div className="flex gap-4">
+                                <button 
+                                  onClick={() => addToBudget(vendor)}
+                                  className="flex-1 flex items-center justify-center gap-2 py-4 bg-rose-500 text-white rounded-2xl text-sm font-bold shadow-lg shadow-rose-200"
+                                >
+                                  <Plus className="w-4 h-4" />
+                                  Añadir al Presupuesto
+                                </button>
                                 {vendor.phone && (
-                                  <a href={`tel:${vendor.phone}`} className="flex-1 flex items-center justify-center gap-2 py-4 bg-rose-500 text-white rounded-2xl text-sm font-bold shadow-lg shadow-rose-200">
+                                  <a href={`tel:${vendor.phone}`} className="flex-1 flex items-center justify-center gap-2 py-4 bg-white border border-slate-200 text-slate-700 rounded-2xl text-sm font-bold">
                                     <Phone className="w-4 h-4" />
                                     Llamar
                                   </a>
@@ -1680,6 +2388,19 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ConfirmationDialog
+        isOpen={isConfirmOpen}
+        onClose={() => {
+          setIsConfirmOpen(false);
+          setVendorToRemove(null);
+        }}
+        onConfirm={confirmRemoveFavorite}
+        title="¿Quitar de favoritos?"
+        message="¿Estás seguro de que quieres eliminar este proveedor de tu lista de favoritos?"
+        confirmText="Quitar"
+        cancelText="Cancelar"
+      />
     </div>
   );
 };

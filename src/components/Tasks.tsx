@@ -3,8 +3,9 @@ import { db } from '../firebase';
 import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, orderBy as firestoreOrderBy } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../App';
 import { Task } from '../types';
-import { Plus, Trash2, CheckCircle2, Circle, Calendar, GripVertical, AlertTriangle, Minus, ArrowDown, ChevronLeft, ChevronRight, CalendarPlus } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, Circle, Calendar, GripVertical, AlertTriangle, Minus, ArrowDown, ChevronLeft, ChevronRight, CalendarPlus, X, Info, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { ConfirmationDialog } from './ConfirmationDialog';
 import confetti from 'canvas-confetti';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -19,9 +20,16 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
   const [category, setCategory] = useState('General');
   const [dueDate, setDueDate] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [timeframe, setTimeframe] = useState('De 10 a 12 meses');
   const [showForm, setShowForm] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [view, setView] = useState<'list' | 'calendar'>('list');
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<string | null>(format(new Date(), 'yyyy-MM-dd'));
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasPreloaded, setHasPreloaded] = useState(false);
 
   useEffect(() => {
     // Check for upcoming deadlines
@@ -52,15 +60,136 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
     return () => clearInterval(interval);
   }, [tasks]);
 
+  const preloadTasks = async () => {
+    const basicTasks = [
+      { 
+        title: '¡Nos casamos! ¿Y ahora qué?', 
+        category: 'Planificación', 
+        priority: 'high', 
+        timeframe: 'De 10 a 12 meses',
+        description: '¡Felicidades! Ya os habéis decidido a dar el gran paso y a partir de ahora se presenta un largo camino para organizar juntos vuestra boda. Con esta agenda de tareas todo será mucho más fácil.'
+      },
+      { 
+        title: 'Definir el presupuesto total', 
+        category: 'Planificación', 
+        priority: 'high', 
+        timeframe: 'De 10 a 12 meses',
+        description: 'Lo primero que debéis pensar es qué tipo de ceremonia queréis: religiosa o civil, por todo lo alto o más íntima, con un estilo clásico o más moderno y atrevido.'
+      },
+      { 
+        title: 'Elegir una fecha aproximada', 
+        category: 'Planificación', 
+        priority: 'high', 
+        timeframe: 'De 10 a 12 meses',
+        description: 'Tened en cuenta la época del año, el clima y la disponibilidad de vuestros seres más queridos.'
+      },
+      { 
+        title: 'Hacer la lista preliminar de invitados', 
+        category: 'Planificación', 
+        priority: 'high', 
+        timeframe: 'De 10 a 12 meses',
+        description: 'Empezad por los familiares y amigos más cercanos. Esto os dará una idea del tamaño del lugar que necesitáis.'
+      },
+      { 
+        title: 'Elegir el lugar de la ceremonia', 
+        category: 'Ceremonia', 
+        priority: 'high', 
+        timeframe: 'De 10 a 12 meses',
+        description: 'Buscad iglesias, juzgados o lugares al aire libre que encajen con vuestro estilo.'
+      },
+      { 
+        title: 'Reservar el salón o finca para la boda', 
+        category: 'Banquete', 
+        priority: 'high', 
+        timeframe: 'De 10 a 12 meses',
+        description: 'Este es uno de los pasos más importantes. Aseguraos de que la fecha esté disponible.'
+      },
+      { 
+        title: 'Contratar el servicio de catering', 
+        category: 'Banquete', 
+        priority: 'medium', 
+        timeframe: 'De 10 a 12 meses',
+        description: 'Si el lugar no incluye comida, buscad un catering que ofrezca el menú que deseáis.'
+      },
+      { 
+        title: 'Empezar a mirar el vestido de novia', 
+        category: 'Novia y Complementos', 
+        priority: 'medium', 
+        timeframe: 'De 7 a 9 meses',
+        description: 'Visitad tiendas, mirad catálogos y empezad a definir qué estilo os gusta más.'
+      },
+      { 
+        title: 'Contratar fotógrafo y videógrafo', 
+        category: 'Fotografía y vídeo', 
+        priority: 'medium', 
+        timeframe: 'De 7 a 9 meses',
+        description: 'Los mejores profesionales suelen reservarse con mucha antelación.'
+      },
+      { 
+        title: 'Contratar DJ o banda de música', 
+        category: 'Música', 
+        priority: 'medium', 
+        timeframe: 'De 7 a 9 meses',
+        description: 'La música es el alma de la fiesta. Elegid a alguien que entienda vuestros gustos.'
+      },
+      { 
+        title: 'Tramitar los documentos para la boda civil', 
+        category: 'Trámites matrimonio', 
+        priority: 'high', 
+        timeframe: 'De 7 a 9 meses',
+        description: 'Informaos en vuestro ayuntamiento o registro civil sobre los papeles necesarios.'
+      },
+      { 
+        title: 'Elegir las alianzas', 
+        category: 'Joyas', 
+        priority: 'low', 
+        timeframe: 'De 4 a 6 meses',
+        description: 'Buscad algo que os guste a ambos y que sea cómodo para el día a día.'
+      },
+      { 
+        title: 'Enviar las invitaciones', 
+        category: 'Invitaciones', 
+        priority: 'medium', 
+        timeframe: 'De 4 a 6 meses',
+        description: 'Es el momento de comunicar oficialmente la gran noticia a todos vuestros invitados.'
+      }
+    ];
+
+    try {
+      const tasksCollection = collection(db, `weddings/${weddingId}/tasks`);
+      for (let i = 0; i < basicTasks.length; i++) {
+        const task = basicTasks[i];
+        await addDoc(tasksCollection, {
+          ...task,
+          weddingId,
+          completed: false,
+          createdAt: new Date().toISOString(),
+          order: i
+        });
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `weddings/${weddingId}/tasks`);
+    }
+  };
+
   useEffect(() => {
     const q = query(collection(db, `weddings/${weddingId}/tasks`), firestoreOrderBy('order', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setTasks(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Task)));
+      const fetchedTasks = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Task));
+      setTasks(fetchedTasks);
+      setIsLoading(false);
+      
+      // Auto-preload if empty and not already preloaded in this session
+      if (fetchedTasks.length === 0 && !hasPreloaded) {
+        setHasPreloaded(true);
+        preloadTasks();
+      }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, `weddings/${weddingId}/tasks`);
+      setIsLoading(false);
     });
     return unsubscribe;
-  }, [weddingId]);
+  }, [weddingId, hasPreloaded]);
 
   const onDragEnd = async (result: DropResult) => {
     if (!result.destination) return;
@@ -91,7 +220,8 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
         weddingId,
         title: newTitle,
         description: description || null,
-        category: category || 'General',
+        category: category || 'Planificación',
+        timeframe: timeframe || 'De 10 a 12 meses',
         dueDate: dueDate || null,
         priority: priority || 'medium',
         completed: false,
@@ -100,7 +230,8 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
       });
       setNewTitle('');
       setDescription('');
-      setCategory('General');
+      setCategory('Planificación');
+      setTimeframe('De 10 a 12 meses');
       setDueDate('');
       setPriority('medium');
       setShowForm(false);
@@ -130,17 +261,25 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
   };
 
   const deleteTask = async (id: string) => {
+    setTaskToDelete(id);
+    setIsConfirmOpen(true);
+  };
+
+  const confirmDeleteTask = async () => {
+    if (!taskToDelete) return;
     try {
-      await deleteDoc(doc(db, `weddings/${weddingId}/tasks`, id));
+      await deleteDoc(doc(db, `weddings/${weddingId}/tasks`, taskToDelete));
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `weddings/${weddingId}/tasks/${id}`);
+      handleFirestoreError(error, OperationType.DELETE, `weddings/${weddingId}/tasks/${taskToDelete}`);
     }
+    setTaskToDelete(null);
   };
 
   const completedCount = tasks.filter(t => t.completed).length;
   const progress = tasks.length > 0 ? (completedCount / tasks.length) * 100 : 0;
 
-  const categories = ['General', 'Lugar y Catering', 'Vestimenta', 'Fotografía', 'Música', 'Decoración', 'Papelería', 'Otros'];
+  const categories = ['Planificación', 'Ceremonia', 'Banquete', 'Novia y Complementos', 'Novio y Complementos', 'Fotografía y vídeo', 'Música', 'Decoración', 'Invitaciones', 'Joyas', 'Trámites matrimonio', 'Otros'];
+  const timeframes = ['De 10 a 12 meses', 'De 7 a 9 meses', 'De 4 a 6 meses', 'De 2 a 3 meses', 'Último mes', 'Después de la boda'];
 
   const addToCalendar = (task: Task) => {
     if (!task.dueDate) return;
@@ -162,49 +301,49 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
     const days = [];
     // Padding for start of month
     for (let i = 0; i < startDay; i++) {
-      days.push(<div key={`pad-${i}`} className="h-24 md:h-32 bg-slate-50/50 border border-slate-100/50" />);
+      days.push(<div key={`pad-${i}`} className="h-20 md:h-24 bg-slate-50/50 border border-slate-100/50" />);
     }
 
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = format(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), d), 'yyyy-MM-dd');
       const dayTasks = tasks.filter(t => t.dueDate === dateStr);
       const isToday = format(new Date(), 'yyyy-MM-dd') === dateStr;
+      const isSelected = selectedDate === dateStr;
 
       days.push(
-        <div key={d} className={`h-24 md:h-32 p-2 border border-slate-100 bg-white relative group transition-colors hover:bg-rose-50/30 ${isToday ? 'ring-2 ring-inset ring-rose-500/20' : ''}`}>
-          <span className={`text-sm font-bold ${isToday ? 'bg-rose-500 text-white w-6 h-6 flex items-center justify-center rounded-full' : 'text-slate-400'}`}>
-            {d}
-          </span>
-          <div className="mt-1 space-y-1 overflow-y-auto max-h-[calc(100%-1.5rem)] no-scrollbar">
-            {dayTasks.map(task => (
-              <div 
-                key={task.id}
-                onClick={() => toggleTask(task)}
-                className={`text-[10px] p-1 rounded-md flex items-center justify-between gap-1 cursor-pointer transition-all ${
-                  task.completed 
-                    ? 'bg-slate-100 text-slate-400 line-through' 
-                    : task.priority === 'high' ? 'bg-rose-100 text-rose-700 border-l-2 border-rose-500' :
-                      task.priority === 'medium' ? 'bg-amber-100 text-amber-700 border-l-2 border-amber-500' :
-                      'bg-emerald-100 text-emerald-700 border-l-2 border-emerald-500'
-                }`}
-                title={task.title}
-              >
-                <span className="truncate flex-1">{task.title}</span>
-                {!task.completed && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      addToCalendar(task);
-                    }}
-                    className="shrink-0 text-rose-500 hover:text-rose-700 transition-colors"
-                    title="Agregar a Google Calendar"
-                  >
-                    <CalendarPlus className="w-2.5 h-2.5" />
-                  </button>
-                )}
+        <div 
+          key={d} 
+          onClick={() => setSelectedDate(dateStr)}
+          className={`h-20 md:h-24 p-2 border border-slate-100 bg-white relative group transition-all cursor-pointer hover:bg-rose-50/30 flex flex-col justify-between ${
+            isToday ? 'ring-2 ring-inset ring-rose-500/20' : ''
+          } ${
+            isSelected ? 'bg-rose-50/50 border-rose-200 z-10 shadow-sm' : ''
+          }`}
+        >
+          <div className="flex justify-between items-start">
+            <span className={`text-sm font-bold w-6 h-6 flex items-center justify-center rounded-full transition-colors ${
+              isToday ? 'bg-rose-500 text-white' : 
+              isSelected ? 'text-rose-600 bg-rose-100/50' : 'text-slate-400'
+            }`}>
+              {d}
+            </span>
+            {dayTasks.length > 0 && (
+              <div className="flex gap-0.5">
+                {dayTasks.slice(0, 3).map(t => (
+                  <div key={t.id} className={`w-1.5 h-1.5 rounded-full ${t.completed ? 'bg-slate-300' : 'bg-rose-500'}`} />
+                ))}
+                {dayTasks.length > 3 && <div className="w-1 h-1 rounded-full bg-slate-400" />}
               </div>
-            ))}
+            )}
           </div>
+          
+          {dayTasks.length > 0 && (
+            <div className="mt-auto">
+              <p className={`text-[9px] font-bold uppercase tracking-tighter ${isSelected ? 'text-rose-500' : 'text-slate-300'}`}>
+                {dayTasks.length} {dayTasks.length === 1 ? 'Tarea' : 'Tareas'}
+              </p>
+            </div>
+          )}
         </div>
       );
     }
@@ -212,41 +351,14 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
     return days;
   };
 
-  const preloadTasks = async () => {
-    const basicTasks = [
-      { title: 'Definir el presupuesto total', category: 'General', priority: 'high' },
-      { title: 'Hacer la lista preliminar de invitados', category: 'Otros', priority: 'high' },
-      { title: 'Reservar el salón o lugar de la ceremonia', category: 'Lugar y Catering', priority: 'high' },
-      { title: 'Contratar el servicio de catering', category: 'Lugar y Catering', priority: 'medium' },
-      { title: 'Elegir el vestido y el traje', category: 'Vestimenta', priority: 'medium' },
-      { title: 'Contratar fotógrafo y videógrafo', category: 'Fotografía', priority: 'medium' },
-      { title: 'Contratar DJ o banda de música', category: 'Música', priority: 'medium' },
-      { title: 'Elegir y encargar la torta de bodas', category: 'Lugar y Catering', priority: 'low' },
-      { title: 'Definir la decoración floral', category: 'Decoración', priority: 'low' },
-      { title: 'Iniciar trámites legales o religiosos', category: 'General', priority: 'high' },
-      { title: 'Planificar la luna de miel', category: 'Otros', priority: 'low' },
-      { title: 'Enviar las invitaciones (Save the Date)', category: 'Papelería', priority: 'low' },
-      { title: 'Elegir las alianzas', category: 'Otros', priority: 'low' },
-      { title: 'Prueba de peinado y maquillaje', category: 'Vestimenta', priority: 'low' }
-    ];
-
-    try {
-      const tasksCollection = collection(db, `weddings/${weddingId}/tasks`);
-      for (let i = 0; i < basicTasks.length; i++) {
-        const task = basicTasks[i];
-        await addDoc(tasksCollection, {
-          ...task,
-          weddingId,
-          completed: false,
-          description: 'Tarea pre-cargada para ayudarte a comenzar.',
-          createdAt: new Date().toISOString(),
-          order: i
-        });
-      }
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `weddings/${weddingId}/tasks`);
-    }
-  };
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-4">
+        <div className="w-12 h-12 border-4 border-rose-100 border-t-rose-500 rounded-full animate-spin" />
+        <p className="text-slate-400 font-medium animate-pulse">Organizando tus tareas...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -354,7 +466,7 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Categoría</label>
                 <select
@@ -364,6 +476,18 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                 >
                   {categories.map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Tiempo</label>
+                <select
+                  value={timeframe}
+                  onChange={(e) => setTimeframe(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all appearance-none"
+                >
+                  {timeframes.map(tf => (
+                    <option key={tf} value={tf}>{tf}</option>
                   ))}
                 </select>
               </div>
@@ -426,124 +550,108 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 20 }}
+            className="space-y-12"
           >
-            <DragDropContext onDragEnd={onDragEnd}>
-              <Droppable droppableId="tasks">
-                {(provided) => (
-                  <div 
-                    {...provided.droppableProps} 
-                    ref={provided.innerRef} 
-                    className="space-y-4"
-                  >
-                    <AnimatePresence mode="popLayout">
-                      {tasks.map((task: Task, index: number) => (
-                        <DraggableAny key={task.id} draggableId={task.id} index={index}>
-                          {(provided: DraggableProvided, snapshot: DraggableStateSnapshot) => (
-                            <motion.div 
-                              ref={provided.innerRef}
-                              {...provided.draggableProps}
-                              layout
-                              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                              animate={{ 
-                                opacity: task.completed ? 0.6 : 1, 
-                                scale: 1, 
-                                y: 0,
-                                backgroundColor: task.completed ? '#f8fafc' : '#ffffff'
-                              }}
-                              exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
-                              whileHover={{ y: -2 }}
-                              className={`rounded-3xl border border-slate-100 shadow-sm flex items-stretch overflow-hidden transition-all group ${
-                                snapshot.isDragging ? 'shadow-2xl ring-2 ring-rose-500/20 z-50' : ''
-                              }`}
+            {timeframes.map(tf => {
+              const timeframeTasks = tasks.filter(t => t.timeframe === tf);
+              if (timeframeTasks.length === 0) return null;
+
+              return (
+                <div key={tf} className="space-y-6">
+                  <div className="flex items-center gap-4">
+                    <h3 className="text-xl font-serif font-bold text-slate-800">{tf}</h3>
+                    <div className="h-px flex-1 bg-slate-100" />
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                      {timeframeTasks.filter(t => t.completed).length} / {timeframeTasks.length}
+                    </span>
+                  </div>
+
+                  <div className="space-y-4">
+                    {timeframeTasks.map((task: Task) => (
+                      <motion.div 
+                        key={task.id}
+                        layout
+                        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                        animate={{ 
+                          opacity: task.completed ? 0.6 : 1, 
+                          scale: 1, 
+                          y: 0,
+                          backgroundColor: task.completed ? '#f8fafc' : '#ffffff'
+                        }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        whileHover={{ y: -2 }}
+                        onClick={() => setSelectedTask(task)}
+                        className={`rounded-3xl border border-slate-100 shadow-sm flex items-stretch overflow-hidden transition-all group cursor-pointer ${
+                          task.completed ? '' : 'hover:border-rose-200 hover:shadow-md'
+                        }`}
+                      >
+                        {/* Priority Indicator Bar */}
+                        <div className={`w-2.5 transition-all duration-500 ${
+                          task.priority === 'high' ? 'bg-rose-500 shadow-[4px_0_15px_rgba(244,63,94,0.4)]' :
+                          task.priority === 'medium' ? 'bg-amber-500 shadow-[4px_0_15px_rgba(245,158,11,0.4)]' :
+                          'bg-emerald-500 shadow-[4px_0_15px_rgba(16,185,129,0.4)]'
+                        }`} />
+
+                        <div className="flex-1 p-6 flex items-start justify-between">
+                          <div className="flex items-start gap-4 flex-1">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleTask(task);
+                              }} 
+                              className={`mt-1 transition-all duration-300 hover:scale-110 active:scale-95 ${task.completed ? 'text-emerald-500' : 'text-slate-300 hover:text-rose-500'}`}
                             >
-                              {/* Priority Indicator Bar */}
-                              <div className={`w-2.5 transition-all duration-500 ${
-                                task.priority === 'high' ? 'bg-rose-500 shadow-[4px_0_15px_rgba(244,63,94,0.4)]' :
-                                task.priority === 'medium' ? 'bg-amber-500 shadow-[4px_0_15px_rgba(245,158,11,0.4)]' :
-                                'bg-emerald-500 shadow-[4px_0_15px_rgba(16,185,129,0.4)]'
-                              }`} />
+                              {task.completed ? <CheckCircle2 className="w-7 h-7" /> : <Circle className="w-7 h-7" />}
+                            </button>
+                            <div className="flex-1 space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className={`font-bold text-slate-800 text-lg transition-all ${task.completed ? 'line-through decoration-slate-400 text-slate-400' : ''}`}>
+                                  {task.title}
+                                </h3>
+                                {task.category && (
+                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                                    {task.category}
+                                  </span>
+                                )}
+                              </div>
+                              
+                              {task.description && !task.completed && (
+                                <p className="text-slate-500 text-sm leading-relaxed line-clamp-1">{task.description}</p>
+                              )}
 
-                              <div className="flex-1 p-6 flex items-start justify-between">
-                                <div className="flex items-start gap-4 flex-1">
-                                  <div {...provided.dragHandleProps} className="mt-1.5 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing">
-                                    <GripVertical className="w-5 h-5" />
-                                  </div>
-                                  <button 
-                                    onClick={() => toggleTask(task)} 
-                                    className={`mt-1 transition-all duration-300 hover:scale-110 active:scale-95 ${task.completed ? 'text-emerald-500' : 'text-slate-300 hover:text-rose-500'}`}
-                                  >
-                                    {task.completed ? <CheckCircle2 className="w-7 h-7" /> : <Circle className="w-7 h-7" />}
-                                  </button>
-                                  <div className="flex-1 space-y-1">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <h3 className={`font-bold text-slate-800 text-lg transition-all ${task.completed ? 'line-through decoration-slate-400 text-slate-400' : ''}`}>
-                                        {task.title}
-                                      </h3>
-                                      {task.category && (
-                                        <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                                          {task.category}
-                                        </span>
-                                      )}
-                                      {task.priority && (
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${
-                                          task.priority === 'high' ? 'bg-rose-50 text-rose-500' :
-                                          task.priority === 'medium' ? 'bg-amber-50 text-amber-500' :
-                                          'bg-emerald-50 text-emerald-500'
-                                        }`}>
-                                          {task.priority === 'high' && <AlertTriangle className="w-3 h-3" />}
-                                          {task.priority === 'medium' && <Minus className="w-3 h-3" />}
-                                          {task.priority === 'low' && <ArrowDown className="w-3 h-3" />}
-                                          {task.priority === 'low' ? 'Baja' : task.priority === 'medium' ? 'Media' : 'Alta'}
-                                        </span>
-                                      )}
-                                    </div>
-                                    
-                                    {task.description && !task.completed && (
-                                      <p className="text-slate-500 text-sm leading-relaxed">{task.description}</p>
-                                    )}
-
-                                    {task.dueDate && (
-                                      <div className="flex items-center gap-3 mt-2">
-                                        <div className={`flex items-center gap-1.5 text-xs font-medium ${
-                                          !task.completed && new Date(task.dueDate) < new Date() ? 'text-rose-500' : 'text-slate-400'
-                                        }`}>
-                                          <Calendar className="w-3.5 h-3.5" />
-                                          {format(new Date(task.dueDate), "d 'de' MMMM, yyyy", { locale: es })}
-                                        </div>
-                                        {!task.completed && (
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              addToCalendar(task);
-                                            }}
-                                            className="flex items-center gap-1 text-[10px] font-bold text-rose-500 hover:text-rose-600 transition-colors uppercase tracking-wider"
-                                            title="Agregar a Google Calendar"
-                                          >
-                                            <CalendarPlus className="w-3 h-3" />
-                                            Calendario
-                                          </button>
-                                        )}
-                                      </div>
-                                    )}
+                              {task.dueDate && (
+                                <div className="flex items-center gap-3 mt-2">
+                                  <div className={`flex items-center gap-1.5 text-xs font-medium ${
+                                    !task.completed && new Date(task.dueDate) < new Date() ? 'text-rose-500' : 'text-slate-400'
+                                  }`}>
+                                    <Calendar className="w-3.5 h-3.5" />
+                                    {format(new Date(task.dueDate), "d 'de' MMMM, yyyy", { locale: es })}
                                   </div>
                                 </div>
-                                <button 
-                                  onClick={() => deleteTask(task.id)}
-                                  className="p-2 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
-                                >
-                                  <Trash2 className="w-5 h-5" />
-                                </button>
-                              </div>
-                            </motion.div>
-                          )}
-                        </DraggableAny>
-                      ))}
-                    </AnimatePresence>
-                    {provided.placeholder}
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="p-2 text-slate-300 group-hover:text-rose-500 transition-colors">
+                              <Info className="w-5 h-5" />
+                            </div>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteTask(task.id);
+                              }}
+                              className="p-2 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
                   </div>
-                )}
-              </Droppable>
-            </DragDropContext>
+                </div>
+              );
+            })}
           </motion.div>
         ) : (
           <motion.div
@@ -590,27 +698,211 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
             <div className="grid grid-cols-7">
               {renderCalendar()}
             </div>
+
+            {selectedDate && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-6 border-t border-slate-100 bg-slate-50/30"
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-rose-500">
+                      <Calendar className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-serif font-bold text-slate-800">
+                        Tareas para el {format(new Date(selectedDate + 'T12:00:00'), "d 'de' MMMM", { locale: es })}
+                      </h4>
+                      <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">
+                        {tasks.filter(t => t.dueDate === selectedDate).length} tareas programadas
+                      </p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setDueDate(selectedDate);
+                      setShowForm(true);
+                    }}
+                    className="text-rose-500 hover:text-rose-600 text-sm font-bold flex items-center gap-1 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Agregar Tarea
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {tasks.filter(t => t.dueDate === selectedDate).length > 0 ? (
+                    tasks.filter(t => t.dueDate === selectedDate).map(task => (
+                      <motion.div 
+                        key={task.id} 
+                        layout
+                        className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between group hover:border-rose-100 transition-all"
+                      >
+                        <div className="flex items-center gap-4">
+                          <button 
+                            onClick={() => toggleTask(task)}
+                            className={`transition-all duration-300 hover:scale-110 ${task.completed ? 'text-emerald-500' : 'text-slate-300 hover:text-rose-500'}`}
+                          >
+                            {task.completed ? <CheckCircle2 className="w-6 h-6" /> : <Circle className="w-6 h-6" />}
+                          </button>
+                          <div className="space-y-0.5">
+                            <span className={`text-sm font-bold block ${task.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+                              {task.title}
+                            </span>
+                            {task.category && (
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                {task.category}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {task.priority === 'high' && <AlertTriangle className="w-4 h-4 text-rose-500" />}
+                          <button 
+                            onClick={() => deleteTask(task.id)}
+                            className="p-2 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </motion.div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 bg-white rounded-2xl border border-dashed border-slate-200">
+                      <p className="text-sm text-slate-400 italic">No hay tareas programadas para este día.</p>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
 
-        {tasks.length === 0 && !showForm && (
-          <div className="text-center py-20 bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-200 space-y-6">
-            <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto text-slate-300">
-              <CheckCircle2 className="w-8 h-8" />
-            </div>
-            <div>
-              <h3 className="text-slate-800 font-bold">No hay tareas aún</h3>
-              <p className="text-slate-400 text-sm">¡Empieza a organizar tu boda hoy mismo!</p>
-            </div>
-            <button 
-              onClick={preloadTasks}
-              className="bg-white text-rose-500 border-2 border-rose-500 px-6 py-3 rounded-2xl hover:bg-rose-50 transition-all font-bold text-sm"
+      <ConfirmationDialog
+        isOpen={isConfirmOpen}
+        onClose={() => {
+          setIsConfirmOpen(false);
+          setTaskToDelete(null);
+        }}
+        onConfirm={confirmDeleteTask}
+        title="¿Eliminar tarea?"
+        message="Esta acción no se puede deshacer. La tarea será removida permanentemente."
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+      />
+
+      {/* Task Detail Modal */}
+      <AnimatePresence>
+        {selectedTask && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
-              Pre-cargar tareas básicas
-            </button>
+              <div className="p-8 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <span className="px-3 py-1 bg-rose-100 text-rose-600 rounded-full text-[10px] font-bold uppercase tracking-widest">
+                      {selectedTask.category}
+                    </span>
+                    <span className="px-3 py-1 bg-slate-200 text-slate-600 rounded-full text-[10px] font-bold uppercase tracking-widest">
+                      {selectedTask.timeframe}
+                    </span>
+                  </div>
+                  <h3 className="text-3xl font-serif font-bold text-slate-800">{selectedTask.title}</h3>
+                </div>
+                <button 
+                  onClick={() => setSelectedTask(null)}
+                  className="p-2 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-rose-500 shadow-sm"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-8 space-y-8">
+                <div className="space-y-4">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Descripción</h4>
+                  <p className="text-slate-600 leading-relaxed text-lg">
+                    {selectedTask.description || 'No hay descripción disponible para esta tarea.'}
+                  </p>
+                </div>
+
+                {/* Action Buttons based on category */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Acciones Recomendadas</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {selectedTask.category === 'Banquete' && (
+                      <button className="flex items-center justify-between p-4 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 font-bold hover:bg-rose-100 transition-all">
+                        <span>Buscar Lugares para boda</span>
+                        <ExternalLink className="w-5 h-5" />
+                      </button>
+                    )}
+                    {selectedTask.category === 'Planificación' && (
+                      <button className="flex items-center justify-between p-4 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 font-bold hover:bg-rose-100 transition-all">
+                        <span>Añadir un gasto relacionado</span>
+                        <Plus className="w-5 h-5" />
+                      </button>
+                    )}
+                    <button className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 text-slate-600 font-bold hover:bg-slate-100 transition-all">
+                      <span>Añadir nota...</span>
+                      <Plus className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Recommended for you section (simulated) */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Recomendado para ti</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="aspect-video bg-slate-100 rounded-2xl overflow-hidden relative group cursor-pointer">
+                      <img src="https://picsum.photos/seed/wedding1/400/225" alt="Hotel" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-3">
+                        <p className="text-white text-xs font-bold">Hoteles en tu zona</p>
+                      </div>
+                    </div>
+                    <div className="aspect-video bg-slate-100 rounded-2xl overflow-hidden relative group cursor-pointer">
+                      <img src="https://picsum.photos/seed/wedding2/400/225" alt="Venue" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-3">
+                        <p className="text-white text-xs font-bold">Salones destacados</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-8 bg-slate-50 border-t border-slate-100 flex gap-4">
+                <button 
+                  onClick={() => {
+                    toggleTask(selectedTask);
+                    setSelectedTask(null);
+                  }}
+                  className={`flex-1 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
+                    selectedTask.completed 
+                      ? 'bg-slate-200 text-slate-500' 
+                      : 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-emerald-100'
+                  }`}
+                >
+                  <CheckCircle2 className="w-5 h-5" />
+                  {selectedTask.completed ? 'Marcar como pendiente' : 'Completar Tarea'}
+                </button>
+                <button 
+                  onClick={() => {
+                    deleteTask(selectedTask.id);
+                    setSelectedTask(null);
+                  }}
+                  className="px-6 py-4 bg-white text-rose-500 border border-rose-100 rounded-2xl font-bold hover:bg-rose-50 transition-all"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </div>
+            </motion.div>
           </div>
         )}
+      </AnimatePresence>
       </div>
   );
 };

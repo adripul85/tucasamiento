@@ -3,11 +3,12 @@ import { db } from '../firebase';
 import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../App';
 import { BudgetItem, Payment } from '../types';
+import { ConfirmationDialog } from './ConfirmationDialog';
 import { 
   Plus, Trash2, PieChart as PieChartIcon, DollarSign, TrendingUp, AlertCircle, 
   ChevronRight, Download, Printer, Church, Utensils, Music, Mail, Gift, 
   Flower2, Camera, Bus, Gem, User, Sparkles, Plane, MoreHorizontal, PiggyBank, Coins,
-  Search, ArrowUpDown, Calendar, CreditCard
+  Search, ArrowUpDown, Calendar, CreditCard, History, Zap
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
@@ -111,13 +112,18 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
   const [estimated, setEstimated] = useState('');
   const [category, setCategory] = useState('Ceremonia');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [view, setView] = useState<'budget' | 'payments'>('budget');
+  const [view, setView] = useState<'budget' | 'payments' | 'summary'>('summary');
   const [targetBudget, setTargetBudget] = useState<number>(20000);
   const [isEditingTarget, setIsEditingTarget] = useState(false);
   const [categories, setCategories] = useState(CATEGORIES);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Efectivo');
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  const [paymentToDelete, setPaymentToDelete] = useState<{ id: string, budgetItemId: string, amount: number } | null>(null);
   const [selectedItemForPayment, setSelectedItemForPayment] = useState<BudgetItem | null>(null);
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [paymentSearch, setPaymentSearch] = useState('');
   const [paymentSort, setPaymentSort] = useState<{ field: keyof Payment; direction: 'asc' | 'desc' }>({ field: 'date', direction: 'desc' });
 
@@ -160,19 +166,43 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
   };
 
   const deleteItem = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, `weddings/${weddingId}/budgetItems`, id));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `weddings/${weddingId}/budgetItems/${id}`);
-    }
+    setItemToDelete(id);
+    setIsConfirmOpen(true);
   };
 
-  const updatePaid = async (id: string, paid: number) => {
+  const confirmDeleteItem = async () => {
+    if (!itemToDelete) return;
     try {
-      await updateDoc(doc(db, `weddings/${weddingId}/budgetItems`, id), { paid });
+      await deleteDoc(doc(db, `weddings/${weddingId}/budgetItems`, itemToDelete));
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `weddings/${weddingId}/budgetItems/${id}`);
+      handleFirestoreError(error, OperationType.DELETE, `weddings/${weddingId}/budgetItems/${itemToDelete}`);
     }
+    setItemToDelete(null);
+  };
+
+  const deletePayment = async (paymentId: string, budgetItemId: string, amount: number) => {
+    setPaymentToDelete({ id: paymentId, budgetItemId, amount });
+    setIsConfirmOpen(true);
+  };
+
+  const confirmDeletePayment = async () => {
+    if (!paymentToDelete) return;
+    const { id: paymentId, budgetItemId, amount } = paymentToDelete;
+    try {
+      // 1. Delete payment record
+      await deleteDoc(doc(db, `weddings/${weddingId}/payments`, paymentId));
+      
+      // 2. Update BudgetItem's paid total
+      const item = items.find(i => i.id === budgetItemId);
+      if (item) {
+        await updateDoc(doc(db, `weddings/${weddingId}/budgetItems`, budgetItemId), {
+          paid: Math.max(0, item.paid - amount)
+        });
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `weddings/${weddingId}/payments/${paymentId}`);
+    }
+    setPaymentToDelete(null);
   };
 
   const addPayment = async (e: React.FormEvent) => {
@@ -187,7 +217,7 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
         budgetItemId: selectedItemForPayment.id,
         itemName: selectedItemForPayment.name,
         amount,
-        date: new Date().toISOString(),
+        date: paymentDate,
         method: paymentMethod
       });
 
@@ -199,6 +229,31 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
       setSelectedItemForPayment(null);
       setPaymentAmount('');
       setPaymentMethod('Efectivo');
+      setPaymentDate(new Date().toISOString().split('T')[0]);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `weddings/${weddingId}/payments`);
+    }
+  };
+
+  const quickPayment = async (item: BudgetItem, percentage: number) => {
+    const amount = Math.round(item.estimated * percentage);
+    if (amount <= 0) return;
+
+    try {
+      // 1. Add payment record
+      await addDoc(collection(db, `weddings/${weddingId}/payments`), {
+        weddingId,
+        budgetItemId: item.id,
+        itemName: item.name,
+        amount,
+        date: new Date().toISOString().split('T')[0],
+        method: 'Efectivo'
+      });
+
+      // 2. Update BudgetItem's paid total
+      await updateDoc(doc(db, `weddings/${weddingId}/budgetItems`, item.id), {
+        paid: item.paid + amount
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `weddings/${weddingId}/payments`);
     }
@@ -297,6 +352,12 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
       {/* Top Navigation */}
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex bg-slate-100 p-1 rounded-xl">
+          <button 
+            onClick={() => setView('summary')}
+            className={`px-6 py-2 text-sm font-bold rounded-lg transition-all ${view === 'summary' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Resumen
+          </button>
           <button 
             onClick={() => setView('budget')}
             className={`px-6 py-2 text-sm font-bold rounded-lg transition-all ${view === 'budget' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
@@ -422,9 +483,9 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
 
           {/* Main Content Area */}
           <AnimatePresence mode="wait">
-            {view === 'budget' ? (
+            {view === 'summary' ? (
               <motion.div
-                key="budget"
+                key="summary"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
@@ -433,7 +494,7 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                 {/* Chart Section */}
                 <div className="bg-white p-12 rounded-[40px] border border-slate-100 shadow-sm space-y-8">
                   <h3 className="text-2xl font-serif font-bold text-slate-800 text-center">
-                    {selectedCategory ? `Gastos en ${selectedCategory}` : '¿Cuánto sale mi casamiento?'}
+                    Distribución del Presupuesto
                   </h3>
                   
                   <div className="flex flex-col md:flex-row items-center gap-12">
@@ -469,7 +530,7 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                     </div>
                     
                     <div className="w-full md:w-1/2 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
-                      {(selectedCategory ? categoryData.filter(c => c.name === selectedCategory) : categoryData).map((cat, idx) => (
+                      {categoryData.map((cat, idx) => (
                         <div key={cat.name} className="flex items-center gap-3">
                           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></div>
                           <span className="text-sm text-slate-600 font-medium truncate">{cat.name}</span>
@@ -479,6 +540,142 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                   </div>
                 </div>
 
+                {/* Detailed Category Breakdown Summary */}
+                <div className="bg-white p-8 md:p-12 rounded-[40px] border border-slate-100 shadow-sm space-y-8">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-rose-50 rounded-2xl text-rose-500">
+                      <ArrowUpDown className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-serif font-bold text-slate-800">Desglose por Categoría</h3>
+                      <p className="text-sm text-slate-500">Resumen detallado de gastos estimados y pagados</p>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto -mx-8 md:mx-0">
+                    <table className="w-full text-left min-w-[600px]">
+                      <thead>
+                        <tr className="border-b border-slate-100">
+                          <th className="px-8 pb-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Categoría</th>
+                          <th className="pb-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Estimado</th>
+                          <th className="pb-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Pagado</th>
+                          <th className="pb-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Pendiente</th>
+                          <th className="px-8 pb-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Progreso</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {categoryData.map((cat) => {
+                          const Icon = CATEGORIES.find(c => c.name === cat.name)?.icon || MoreHorizontal;
+                          return (
+                            <tr key={cat.name} className="group hover:bg-slate-50 transition-colors">
+                              <td className="px-8 py-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="p-2 bg-slate-100 rounded-lg text-slate-400 group-hover:text-rose-500 group-hover:bg-rose-50 transition-colors">
+                                    <Icon className="w-4 h-4" />
+                                  </div>
+                                  <span className="font-bold text-slate-700">{cat.name}</span>
+                                </div>
+                              </td>
+                              <td className="py-4 text-right font-medium text-slate-600">${cat.estimated.toLocaleString()}</td>
+                              <td className="py-4 text-right font-bold text-emerald-600">${cat.paid.toLocaleString()}</td>
+                              <td className="py-4 text-right font-medium text-slate-600">${(cat.estimated - cat.paid).toLocaleString()}</td>
+                              <td className="px-8 py-4 text-right">
+                                <div className="flex items-center justify-end gap-3">
+                                  <span className="text-xs font-bold text-slate-400">{cat.percent}%</span>
+                                  <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <motion.div 
+                                      initial={{ width: 0 }}
+                                      animate={{ width: `${Math.min(cat.percent, 100)}%` }}
+                                      className={`h-full rounded-full ${getProgressColor(cat.percent)}`}
+                                    />
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-slate-100 bg-slate-50/50">
+                          <td className="px-8 py-6 font-black uppercase tracking-widest text-slate-400">Total General</td>
+                          <td className="py-6 text-right text-xl font-bold text-slate-800">${totalEstimated.toLocaleString()}</td>
+                          <td className="py-6 text-right text-xl font-bold text-emerald-600">${totalPaid.toLocaleString()}</td>
+                          <td className="py-6 text-right text-xl font-bold text-slate-800">${totalPending.toLocaleString()}</td>
+                          <td className="px-8 py-6 text-right">
+                            <div className="flex items-center justify-end gap-3">
+                              <span className="text-sm font-bold text-slate-800">
+                                {totalEstimated > 0 ? Math.round((totalPaid / totalEstimated) * 100) : 0}%
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Category Breakdown Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {categoryData.map((cat) => {
+                    const Icon = CATEGORIES.find(c => c.name === cat.name)?.icon || MoreHorizontal;
+                    return (
+                      <motion.div 
+                        layout
+                        key={cat.name}
+                        onClick={() => {
+                          setSelectedCategory(cat.name);
+                          setView('budget');
+                        }}
+                        className={`bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer group ${selectedCategory === cat.name ? 'ring-2 ring-rose-500 ring-offset-2' : ''}`}
+                      >
+                        <div className="flex items-start justify-between mb-4">
+                          <div className={`p-3 rounded-2xl ${selectedCategory === cat.name ? 'bg-rose-500 text-white' : 'bg-slate-50 text-slate-400 group-hover:text-rose-500 group-hover:bg-rose-50'} transition-colors`}>
+                            <Icon className="w-6 h-6" />
+                          </div>
+                          <div className="text-right">
+                            <div className="text-[10px] text-slate-400 uppercase tracking-widest font-black">Estimado</div>
+                            <div className="text-lg font-bold text-slate-800">${cat.estimated.toLocaleString()}</div>
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-end">
+                            <h4 className="font-bold text-slate-800">{cat.name}</h4>
+                            <div className="text-right">
+                              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-black">Pagado</div>
+                              <div className={`text-sm font-bold ${cat.isOver ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                ${cat.paid.toLocaleString()}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between text-[10px] font-bold text-slate-400">
+                              <span>Progreso</span>
+                              <span>{cat.percent}%</span>
+                            </div>
+                            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${Math.min(cat.percent, 100)}%` }}
+                                className={`h-full rounded-full ${getProgressColor(cat.percent)}`}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            ) : view === 'budget' ? (
+              <motion.div
+                key="budget"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="space-y-8"
+              >
                 {/* Add Item Form */}
                 <form onSubmit={addItem} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-6">
                   <div className="flex items-center gap-3 mb-2">
@@ -556,65 +753,122 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                             const itemProgress = item.estimated > 0 ? (item.paid / item.estimated) * 100 : 0;
                             const isOver = item.paid > item.estimated;
                             return (
-                              <tr key={item.id} className="group hover:bg-slate-50 transition-colors">
-                                <td className="px-8 py-6">
-                                  <div className="space-y-1">
-                                    <div className="font-bold text-slate-800">{item.name}</div>
-                                    <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">{item.category}</div>
-                                  </div>
-                                </td>
-                                <td className="px-8 py-6 text-right font-bold text-slate-800">${item.estimated.toLocaleString()}</td>
-                                <td className="px-8 py-6 text-right">
-                                  <div className="flex flex-col items-end gap-2">
-                                    <span className={`font-bold ${isOver ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                      ${item.paid.toLocaleString()}
-                                    </span>
-                                    <input 
-                                      type="number"
-                                      className="w-24 bg-slate-100 border-none rounded-lg px-2 py-1 text-[10px] focus:ring-1 focus:ring-emerald-500 outline-none text-right"
-                                      placeholder="Actualizar..."
-                                      onBlur={(e) => {
-                                        const val = Number(e.target.value);
-                                        if (!isNaN(val) && val !== item.paid) {
-                                          updatePaid(item.id, val);
-                                        }
-                                        e.target.value = '';
-                                      }}
-                                    />
-                                  </div>
-                                </td>
-                                <td className="px-8 py-6">
-                                  <div className="space-y-2">
-                                    <div className="flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
-                                      <span>{Math.round(itemProgress)}%</span>
-                                      <span>{isOver ? 'Excedido' : (item.paid >= item.estimated ? 'Completado' : 'Pendiente')}</span>
+                              <React.Fragment key={item.id}>
+                                <tr className="group hover:bg-slate-50 transition-colors">
+                                  <td className="px-8 py-6">
+                                    <div className="space-y-1">
+                                      <div className="font-bold text-slate-800">{item.name}</div>
+                                      <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">{item.category}</div>
                                     </div>
-                                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden w-full">
-                                      <div 
-                                        className={`h-full rounded-full transition-all duration-500 ${getProgressColor(itemProgress)}`}
-                                        style={{ width: `${Math.min(itemProgress, 100)}%` }}
-                                      />
+                                  </td>
+                                  <td className="px-8 py-6 text-right font-bold text-slate-800">${item.estimated.toLocaleString()}</td>
+                                  <td className="px-8 py-6 text-right">
+                                    <div className="flex flex-col items-end gap-1">
+                                      <span className={`font-bold ${isOver ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                        ${item.paid.toLocaleString()}
+                                      </span>
+                                      <span className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Total Pagado</span>
                                     </div>
-                                  </div>
-                                </td>
-                                <td className="px-8 py-6 text-right">
-                                  <div className="flex items-center justify-end gap-2">
-                                    <button 
-                                      onClick={() => setSelectedItemForPayment(item)}
-                                      className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-xl transition-all"
-                                      title="Registrar Pago"
-                                    >
-                                      <DollarSign className="w-4 h-4" />
-                                    </button>
-                                    <button 
-                                      onClick={() => deleteItem(item.id)}
-                                      className="p-2 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
+                                  </td>
+                                  <td className="px-8 py-6">
+                                    <div className="space-y-2">
+                                      <div className="flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
+                                        <span>{Math.round(itemProgress)}%</span>
+                                        <span>{isOver ? 'Excedido' : (item.paid >= item.estimated ? 'Completado' : 'Pendiente')}</span>
+                                      </div>
+                                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden w-full">
+                                        <div 
+                                          className={`h-full rounded-full transition-all duration-500 ${getProgressColor(itemProgress)}`}
+                                          style={{ width: `${Math.min(itemProgress, 100)}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-8 py-6 text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                      {item.paid < item.estimated && (
+                                        <button 
+                                          onClick={() => quickPayment(item, 0.5)}
+                                          className="flex items-center gap-1 px-3 py-1.5 bg-amber-50 text-amber-600 hover:bg-amber-100 rounded-xl transition-all text-[10px] font-bold"
+                                          title="Pago rápido (50%)"
+                                        >
+                                          <Zap className="w-3 h-3" />
+                                          50%
+                                        </button>
+                                      )}
+                                      <button 
+                                        onClick={() => setExpandedItemId(expandedItemId === item.id ? null : item.id)}
+                                        className={`p-2 rounded-xl transition-all ${expandedItemId === item.id ? 'bg-rose-50 text-rose-500' : 'text-slate-200 hover:text-rose-500 hover:bg-rose-50'}`}
+                                        title="Ver historial de pagos"
+                                      >
+                                        <History className="w-4 h-4" />
+                                      </button>
+                                      <button 
+                                        onClick={() => setSelectedItemForPayment(item)}
+                                        className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-xl transition-all"
+                                        title="Registrar Pago"
+                                      >
+                                        <DollarSign className="w-4 h-4" />
+                                      </button>
+                                      <button 
+                                        onClick={() => deleteItem(item.id)}
+                                        className="p-2 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                                {expandedItemId === item.id && (
+                                  <tr>
+                                    <td colSpan={5} className="px-8 py-6 bg-slate-50/50">
+                                      <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                        <div className="flex items-center justify-between">
+                                          <div className="text-[10px] text-slate-400 uppercase tracking-widest font-black">Pagos registrados</div>
+                                          <div className="text-[10px] text-slate-400 font-bold">{payments.filter(p => p.budgetItemId === item.id).length} pagos</div>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                          {payments.filter(p => p.budgetItemId === item.id).map(p => (
+                                            <div key={p.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex justify-between items-center group/payment">
+                                              <div className="space-y-1">
+                                                <div className="text-sm font-bold text-slate-800">${p.amount.toLocaleString()}</div>
+                                                <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                                                  <Calendar className="w-3 h-3" />
+                                                  {new Date(p.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                </div>
+                                              </div>
+                                              <div className="flex flex-col items-end gap-1">
+                                                <div className="flex items-center gap-2">
+                                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[8px] font-bold uppercase tracking-wider">
+                                                    {p.method || 'N/A'}
+                                                  </span>
+                                                  <button 
+                                                    onClick={() => deletePayment(p.id, item.id, p.amount)}
+                                                    className="p-1 text-slate-200 hover:text-rose-500 transition-colors opacity-0 group-hover/payment:opacity-100"
+                                                  >
+                                                    <Trash2 className="w-3 h-3" />
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          ))}
+                                          {payments.filter(p => p.budgetItemId === item.id).length === 0 && (
+                                            <div className="col-span-full py-8 text-center">
+                                              <div className="text-xs text-slate-400 italic">No hay pagos registrados para este concepto.</div>
+                                              <button 
+                                                onClick={() => setSelectedItemForPayment(item)}
+                                                className="mt-2 text-[10px] font-bold text-rose-500 hover:text-rose-600 uppercase tracking-wider"
+                                              >
+                                                Registrar el primer pago
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
                             );
                           })
                         ) : (
@@ -754,10 +1008,17 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                               </div>
                             </td>
                             <td className="px-8 py-6 text-right">
-                              <div className="flex items-center justify-end gap-2">
+                              <div className="flex items-center justify-end gap-4">
                                 <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-bold uppercase tracking-wider">
                                   {payment.method || 'N/A'}
                                 </span>
+                                <button 
+                                  onClick={() => deletePayment(payment.id, payment.budgetItemId, payment.amount)}
+                                  className="p-2 text-slate-200 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"
+                                  title="Eliminar pago"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -836,6 +1097,20 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                   </select>
                 </div>
 
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Fecha del Pago</label>
+                  <div className="relative">
+                    <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                    <input
+                      type="date"
+                      required
+                      value={paymentDate}
+                      onChange={(e) => setPaymentDate(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-12 pr-5 py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all font-medium"
+                    />
+                  </div>
+                </div>
+
                 <div className="flex gap-3 pt-2">
                   <button 
                     type="button"
@@ -856,6 +1131,22 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
           </div>
         )}
       </AnimatePresence>
+
+      <ConfirmationDialog
+        isOpen={isConfirmOpen}
+        onClose={() => {
+          setIsConfirmOpen(false);
+          setItemToDelete(null);
+          setPaymentToDelete(null);
+        }}
+        onConfirm={itemToDelete ? confirmDeleteItem : confirmDeletePayment}
+        title={itemToDelete ? "¿Eliminar concepto?" : "¿Eliminar pago?"}
+        message={itemToDelete 
+          ? "Esta acción eliminará el concepto y todos sus pagos asociados permanentemente." 
+          : "Esta acción eliminará este registro de pago y ajustará el total pagado del concepto."}
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+      />
     </div>
   );
 };

@@ -37,6 +37,7 @@
         "title": { "type": "string", "description": "Task title." },
         "description": { "type": "string", "description": "Task details." },
         "category": { "type": "string", "description": "Task category." },
+        "timeframe": { "type": "string", "description": "Task timeframe (e.g., 'De 10 a 12 meses')." },
         "dueDate": { "type": "string", "format": "date", "description": "Task deadline." },
         "completed": { "type": "boolean", "description": "Completion status." },
         "priority": { "type": "string", "enum": ["low", "medium", "high"], "description": "Task priority." },
