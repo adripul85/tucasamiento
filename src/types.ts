@@ -80,11 +80,17 @@ export interface WeddingWebsite {
   };
   sections: {
     id: string;
-    type: 'welcome' | 'date-location' | 'invitation' | 'rsvp' | 'gallery' | 'story';
+    type: 'welcome' | 'date-location' | 'invitation' | 'rsvp' | 'gallery' | 'story' | 'map' | 'event-details';
     title: string;
     content: string;
     order: number;
     visible: boolean;
+    details?: {
+      food?: string;
+      music?: string;
+      dressCode?: string;
+      other?: string;
+    };
   }[];
 }
 

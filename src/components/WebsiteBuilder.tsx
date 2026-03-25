@@ -13,6 +13,8 @@ import {
   X,
   ChevronRight, 
   ChevronLeft, 
+  ChevronUp,
+  ChevronDown,
   Globe, 
   Settings,
   Image as ImageIcon,
@@ -21,7 +23,14 @@ import {
   MapPin,
   Heart,
   Sparkles,
-  Share2
+  Share2,
+  Trash2,
+  PlusCircle,
+  GripVertical,
+  Utensils,
+  Music,
+  Users,
+  Info
 } from 'lucide-react';
 
 import { WeddingWebsiteView } from './WeddingWebsiteView';
@@ -51,7 +60,19 @@ export const WebsiteBuilder: React.FC<WebsiteBuilderProps> = ({ wedding }) => {
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, 'weddingWebsites', wedding.id), (snapshot) => {
       if (snapshot.exists()) {
-        setWebsite({ id: snapshot.id, ...snapshot.data() } as WeddingWebsite);
+        const data = snapshot.data();
+        const websiteData = { id: snapshot.id, ...data } as WeddingWebsite;
+        
+        // Ensure sections exist for older data
+        if (!websiteData.sections || websiteData.sections.length === 0) {
+          websiteData.sections = [
+            { id: '1', type: 'welcome', title: 'Bienvenidos', content: '', order: 0, visible: true },
+            { id: '2', type: 'date-location', title: 'Cuándo y Dónde', content: '', order: 1, visible: true },
+            { id: '3', type: 'invitation', title: 'La Invitación', content: '', order: 2, visible: true },
+            { id: '4', type: 'rsvp', title: 'Confirmación', content: '', order: 3, visible: true },
+          ];
+        }
+        setWebsite(websiteData);
       } else {
         // Initialize default website if not exists
         const newWebsite: Partial<WeddingWebsite> = {
@@ -102,6 +123,66 @@ export const WebsiteBuilder: React.FC<WebsiteBuilderProps> = ({ wedding }) => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const moveSection = (index: number, direction: 'up' | 'down') => {
+    if (!website) return;
+    const newSections = [...(website.sections || [])];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= newSections.length) return;
+    
+    [newSections[index], newSections[targetIndex]] = [newSections[targetIndex], newSections[index]];
+    
+    // Update order property
+    const updatedSections = newSections.map((s, i) => ({ ...s, order: i }));
+    setWebsite({ ...website, sections: updatedSections });
+  };
+
+  const deleteSection = (id: string) => {
+    if (!website) return;
+    // Don't delete core sections like welcome
+    const sectionToDelete = website.sections.find(s => s.id === id);
+    if (sectionToDelete?.type === 'welcome') {
+      alert('La sección de bienvenida no se puede eliminar.');
+      return;
+    }
+    const updatedSections = website.sections.filter(s => s.id !== id).map((s, i) => ({ ...s, order: i }));
+    setWebsite({ ...website, sections: updatedSections });
+  };
+
+  const addSection = (type: WeddingWebsite['sections'][0]['type']) => {
+    if (!website) return;
+    // Check if section type already exists and maybe limit it?
+    // For now, allow multiple except for rsvp and welcome
+    if ((type === 'rsvp' || type === 'welcome') && website.sections.find(s => s.type === type)) {
+      alert(`Solo puede haber una sección de ${type}.`);
+      return;
+    }
+
+    const titles: Record<string, string> = {
+      story: 'Nuestra Historia',
+      gallery: 'Galería de Fotos',
+      map: 'Cómo Llegar',
+      'date-location': 'Cuándo y Dónde',
+      invitation: 'La Invitación',
+      rsvp: 'Confirmación',
+      'event-details': 'Detalles del Evento'
+    };
+
+    const newSection: WeddingWebsite['sections'][0] = {
+      id: `${type}-${Date.now()}`,
+      type,
+      title: titles[type] || 'Nueva Sección',
+      content: '',
+      order: website.sections.length,
+      visible: true,
+      details: type === 'event-details' ? {
+        food: '',
+        music: '',
+        dressCode: ''
+      } : undefined
+    };
+    setWebsite({ ...website, sections: [...website.sections, newSection] });
   };
 
   if (loading) {
@@ -230,7 +311,7 @@ export const WebsiteBuilder: React.FC<WebsiteBuilderProps> = ({ wedding }) => {
                 <label className="block text-sm font-bold text-slate-700">Título de Bienvenida</label>
                 <input 
                   type="text"
-                  value={website?.welcomeTitle}
+                  value={website?.welcomeTitle || ''}
                   onChange={(e) => setWebsite(prev => prev ? { ...prev, welcomeTitle: e.target.value } : null)}
                   className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 outline-none focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 transition-all"
                   placeholder="Ej: ¡Bienvenidos a nuestra boda!"
@@ -239,7 +320,7 @@ export const WebsiteBuilder: React.FC<WebsiteBuilderProps> = ({ wedding }) => {
               <div className="space-y-4">
                 <label className="block text-sm font-bold text-slate-700">Mensaje de Bienvenida</label>
                 <textarea 
-                  value={website?.welcomeMessage}
+                  value={website?.welcomeMessage || ''}
                   onChange={(e) => setWebsite(prev => prev ? { ...prev, welcomeMessage: e.target.value } : null)}
                   className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 outline-none focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 transition-all min-h-[120px] resize-none"
                   placeholder="Escribe unas palabras para tus invitados..."
@@ -248,7 +329,7 @@ export const WebsiteBuilder: React.FC<WebsiteBuilderProps> = ({ wedding }) => {
               <div className="space-y-4">
                 <label className="block text-sm font-bold text-slate-700">Texto de la Invitación</label>
                 <textarea 
-                  value={website?.invitationText}
+                  value={website?.invitationText || ''}
                   onChange={(e) => setWebsite(prev => prev ? { ...prev, invitationText: e.target.value } : null)}
                   className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 outline-none focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 transition-all min-h-[120px] resize-none"
                   placeholder="Detalla la invitación formal..."
@@ -256,41 +337,164 @@ export const WebsiteBuilder: React.FC<WebsiteBuilderProps> = ({ wedding }) => {
               </div>
 
               <div className="pt-8 border-t border-slate-100">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center text-rose-500">
-                    <Check className="w-5 h-5" />
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center text-rose-500">
+                      <Layout className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-slate-800">Gestión de Secciones</h3>
+                      <p className="text-xs text-slate-400">Añade, reordena o elimina partes de tu web</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-slate-800">Sección de RSVP</h3>
-                    <p className="text-xs text-slate-400">Configura cómo tus invitados confirman asistencia</p>
+                  <div className="relative group">
+                    <button className="flex items-center gap-2 px-4 py-2 bg-rose-500 text-white rounded-xl text-xs font-bold hover:bg-rose-600 transition-all">
+                      <PlusCircle className="w-4 h-4" />
+                      Añadir Sección
+                    </button>
+                    <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                      {[
+                        { type: 'story', label: 'Nuestra Historia', icon: Heart },
+                        { type: 'gallery', label: 'Galería', icon: ImageIcon },
+                        { type: 'map', label: 'Mapa/Ubicación', icon: MapPin },
+                        { type: 'date-location', label: 'Fecha y Lugar', icon: Calendar },
+                        { type: 'invitation', label: 'Invitación', icon: MessageSquare },
+                        { type: 'rsvp', label: 'RSVP', icon: Check },
+                        { type: 'event-details', label: 'Detalles', icon: Info },
+                      ].map(item => (
+                        <button
+                          key={item.type}
+                          onClick={() => addSection(item.type as any)}
+                          className="w-full flex items-center gap-3 px-4 py-2 hover:bg-slate-50 text-sm text-slate-600 transition-all"
+                        >
+                          <item.icon className="w-4 h-4" />
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
-                <div className="bg-slate-50 p-6 rounded-3xl space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-bold text-slate-700">Habilitar RSVP</p>
-                      <p className="text-xs text-slate-400">Permite a los invitados confirmar desde la web</p>
+                <div className="space-y-4">
+                  {(website?.sections || []).sort((a, b) => a.order - b.order).map((section, index) => (
+                    <div key={section.id} className="bg-slate-50 p-4 rounded-3xl flex items-center gap-4">
+                      <div className="flex flex-col gap-1">
+                        <button 
+                          onClick={() => moveSection(index, 'up')}
+                          disabled={index === 0}
+                          className="p-1 hover:bg-white rounded-lg text-slate-400 hover:text-rose-500 disabled:opacity-0 transition-all"
+                        >
+                          <ChevronUp className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => moveSection(index, 'down')}
+                          disabled={index === (website?.sections?.length || 0) - 1}
+                          className="p-1 hover:bg-white rounded-lg text-slate-400 hover:text-rose-500 disabled:opacity-0 transition-all"
+                        >
+                          <ChevronDown className="w-4 h-4" />
+                        </button>
+                      </div>
+                      
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-white px-2 py-1 rounded-lg border border-slate-100">
+                            {section.type}
+                          </span>
+                          <input 
+                            type="text"
+                            value={section.title}
+                            onChange={(e) => {
+                              const newSections = website?.sections.map(s => 
+                                s.id === section.id ? { ...s, title: e.target.value } : s
+                              );
+                              setWebsite(prev => prev ? { ...prev, sections: newSections || [] } : null);
+                            }}
+                            className="flex-1 bg-transparent font-bold text-slate-700 outline-none focus:text-rose-500 transition-all"
+                          />
+                        </div>
+
+                        {section.type === 'event-details' && (
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                                <Utensils className="w-3 h-3" /> Comida
+                              </label>
+                              <input 
+                                type="text"
+                                placeholder="Ej: Menú gourmet..."
+                                value={section.details?.food || ''}
+                                onChange={(e) => {
+                                  const newSections = website?.sections.map(s => 
+                                    s.id === section.id ? { ...s, details: { ...s.details, food: e.target.value } } : s
+                                  );
+                                  setWebsite(prev => prev ? { ...prev, sections: newSections || [] } : null);
+                                }}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-rose-500 transition-all"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                                <Music className="w-3 h-3" /> Música
+                              </label>
+                              <input 
+                                type="text"
+                                placeholder="Ej: Banda en vivo..."
+                                value={section.details?.music || ''}
+                                onChange={(e) => {
+                                  const newSections = website?.sections.map(s => 
+                                    s.id === section.id ? { ...s, details: { ...s.details, music: e.target.value } } : s
+                                  );
+                                  setWebsite(prev => prev ? { ...prev, sections: newSections || [] } : null);
+                                }}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-rose-500 transition-all"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                                <Users className="w-3 h-3" /> Vestimenta
+                              </label>
+                              <input 
+                                type="text"
+                                placeholder="Ej: Formal..."
+                                value={section.details?.dressCode || ''}
+                                onChange={(e) => {
+                                  const newSections = website?.sections.map(s => 
+                                    s.id === section.id ? { ...s, details: { ...s.details, dressCode: e.target.value } } : s
+                                  );
+                                  setWebsite(prev => prev ? { ...prev, sections: newSections || [] } : null);
+                                }}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-rose-500 transition-all"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => {
+                            const newSections = website?.sections.map(s => 
+                              s.id === section.id ? { ...s, visible: !s.visible } : s
+                            );
+                            setWebsite(prev => prev ? { ...prev, sections: newSections || [] } : null);
+                          }}
+                          className={`w-10 h-5 rounded-full transition-all relative ${
+                            section.visible ? 'bg-rose-500' : 'bg-slate-300'
+                          }`}
+                        >
+                          <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${
+                            section.visible ? 'left-5.5' : 'left-0.5'
+                          }`} />
+                        </button>
+                        <button 
+                          onClick={() => deleteSection(section.id)}
+                          className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                    <button 
-                      onClick={() => {
-                        const rsvpSection = website?.sections.find(s => s.type === 'rsvp');
-                        if (rsvpSection) {
-                          const updatedSections = website?.sections.map(s => 
-                            s.type === 'rsvp' ? { ...s, visible: !s.visible } : s
-                          );
-                          setWebsite(prev => prev ? { ...prev, sections: updatedSections || [] } : null);
-                        }
-                      }}
-                      className={`w-12 h-6 rounded-full transition-all relative ${
-                        website?.sections.find(s => s.type === 'rsvp')?.visible ? 'bg-rose-500' : 'bg-slate-300'
-                      }`}
-                    >
-                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${
-                        website?.sections.find(s => s.type === 'rsvp')?.visible ? 'left-7' : 'left-1'
-                      }`} />
-                    </button>
-                  </div>
+                  ))}
                 </div>
               </div>
             </motion.div>
@@ -310,23 +514,27 @@ export const WebsiteBuilder: React.FC<WebsiteBuilderProps> = ({ wedding }) => {
                   <div className="flex items-center gap-4">
                     <input 
                       type="color"
-                      value={website?.theme.primaryColor}
-                      onChange={(e) => setWebsite(prev => prev ? { ...prev, theme: { ...prev.theme, primaryColor: e.target.value } } : null)}
+                      value={website?.theme?.primaryColor || '#f43f5e'}
+                      onChange={(e) => setWebsite(prev => prev ? { ...prev, theme: { ...(prev.theme || {}), primaryColor: e.target.value } } : null)}
                       className="w-16 h-16 rounded-2xl border-none cursor-pointer"
                     />
-                    <div className="text-sm font-mono text-slate-400 uppercase">{website?.theme.primaryColor}</div>
+                    <div className="text-sm font-mono text-slate-400 uppercase">{website?.theme?.primaryColor || '#f43f5e'}</div>
                   </div>
                 </div>
                 <div className="space-y-4">
                   <label className="block text-sm font-bold text-slate-700">Fuente</label>
                   <select
-                    value={website?.theme.fontFamily}
-                    onChange={(e) => setWebsite(prev => prev ? { ...prev, theme: { ...prev.theme, fontFamily: e.target.value } } : null)}
+                    value={website?.theme?.fontFamily || 'serif'}
+                    onChange={(e) => setWebsite(prev => prev ? { ...prev, theme: { ...(prev.theme || {}), fontFamily: e.target.value } } : null)}
                     className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 outline-none focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 transition-all"
                   >
-                    <option value="serif">Elegante (Serif)</option>
-                    <option value="sans">Moderno (Sans-serif)</option>
-                    <option value="mono">Técnico (Monospace)</option>
+                    <option value="serif">Elegante (Playfair Display)</option>
+                    <option value="cormorant">Clásico (Cormorant Garamond)</option>
+                    <option value="baskerville">Tradicional (Libre Baskerville)</option>
+                    <option value="montserrat">Moderno (Montserrat)</option>
+                    <option value="sans">Minimalista (Inter)</option>
+                    <option value="script">Romántico (Great Vibes)</option>
+                    <option value="dancing">Alegre (Dancing Script)</option>
                   </select>
                 </div>
               </div>
@@ -364,52 +572,13 @@ export const WebsiteBuilder: React.FC<WebsiteBuilderProps> = ({ wedding }) => {
               </div>
 
               {/* Mockup of the website */}
-              <div className="border-8 border-slate-800 rounded-[48px] overflow-hidden shadow-2xl bg-white aspect-[9/16] md:aspect-video max-w-4xl mx-auto">
-                <div className="h-full overflow-y-auto p-8 space-y-12" style={{ fontFamily: website?.theme.fontFamily }}>
-                  <div className="text-center space-y-4 py-12">
-                    <h1 className="text-4xl md:text-6xl font-bold" style={{ color: website?.theme.primaryColor }}>
-                      {website?.welcomeTitle}
-                    </h1>
-                    <p className="text-lg text-slate-500 max-w-lg mx-auto">
-                      {website?.welcomeMessage}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="bg-slate-50 p-8 rounded-[32px] space-y-4">
-                      <div className="flex items-center gap-3 text-rose-500">
-                        <Calendar className="w-6 h-6" />
-                        <h3 className="font-bold">Cuándo</h3>
-                      </div>
-                      <p className="text-slate-600">
-                        {wedding.date ? new Date(wedding.date).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Fecha por definir'}
-                      </p>
-                    </div>
-                    <div className="bg-slate-50 p-8 rounded-[32px] space-y-4">
-                      <div className="flex items-center gap-3 text-rose-500">
-                        <MapPin className="w-6 h-6" />
-                        <h3 className="font-bold">Dónde</h3>
-                      </div>
-                      <p className="text-slate-600">
-                        {wedding.location || 'Ubicación por definir'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="text-center py-12 border-y border-slate-100">
-                    <Heart className="w-12 h-12 text-rose-500 mx-auto mb-6" />
-                    <p className="text-xl italic text-slate-600">
-                      {website?.invitationText}
-                    </p>
-                  </div>
-
-                  <div className="bg-rose-500 p-12 rounded-[40px] text-white text-center space-y-6">
-                    <h2 className="text-3xl font-bold">Confirma tu Asistencia</h2>
-                    <p className="text-rose-100">Esperamos verte pronto.</p>
-                    <button className="px-8 py-4 bg-white text-rose-500 font-bold rounded-2xl shadow-xl">
-                      Hacer RSVP
-                    </button>
-                  </div>
+              <div className="border-8 border-slate-800 rounded-[48px] overflow-hidden shadow-2xl bg-white aspect-[9/16] md:aspect-video max-w-4xl mx-auto relative">
+                <div className="absolute inset-0 overflow-y-auto">
+                  <WeddingWebsiteView 
+                    weddingId={wedding.id} 
+                    wedding={wedding}
+                    website={website}
+                  />
                 </div>
               </div>
             </motion.div>
@@ -461,7 +630,11 @@ export const WebsiteBuilder: React.FC<WebsiteBuilderProps> = ({ wedding }) => {
                 <X className="w-6 h-6" />
               </button>
             </div>
-            <WeddingWebsiteView weddingId={wedding.id} />
+            <WeddingWebsiteView 
+              weddingId={wedding.id} 
+              wedding={wedding}
+              website={website}
+            />
           </motion.div>
         )}
       </AnimatePresence>

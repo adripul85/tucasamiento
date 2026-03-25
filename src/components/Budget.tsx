@@ -147,6 +147,31 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
     return unsubscribe;
   }, [weddingId]);
 
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, 'weddings', weddingId), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data.budget !== undefined) {
+          setTargetBudget(data.budget);
+        }
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `weddings/${weddingId}`);
+    });
+    return unsubscribe;
+  }, [weddingId]);
+
+  const handleSaveTargetBudget = async () => {
+    try {
+      await updateDoc(doc(db, 'weddings', weddingId), {
+        budget: targetBudget
+      });
+      setIsEditingTarget(false);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `weddings/${weddingId}`);
+    }
+  };
+
   const addItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !estimated) return;
@@ -450,8 +475,8 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                       className="text-4xl font-bold text-slate-800 text-center w-full bg-transparent border-b-2 border-rose-200 outline-none"
                       value={targetBudget}
                       onChange={(e) => setTargetBudget(Number(e.target.value))}
-                      onBlur={() => setIsEditingTarget(false)}
-                      onKeyDown={(e) => e.key === 'Enter' && setIsEditingTarget(false)}
+                      onBlur={handleSaveTargetBudget}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSaveTargetBudget()}
                     />
                   ) : (
                     <div className="text-4xl font-bold text-slate-800">${targetBudget.toLocaleString()}</div>

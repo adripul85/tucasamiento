@@ -6,9 +6,10 @@ import { Heart, Users, Utensils, MessageSquare, CheckCircle2, Search, Loader2, X
 
 interface RSVPFormProps {
   weddingId: string;
+  inline?: boolean;
 }
 
-export const RSVPForm: React.FC<RSVPFormProps> = ({ weddingId }) => {
+export const RSVPForm: React.FC<RSVPFormProps> = ({ weddingId, inline }) => {
   const [step, setStep] = useState<'search' | 'form' | 'success'>('search');
   const [name, setName] = useState('');
   const [foundGuest, setFoundGuest] = useState<any>(null);
@@ -98,7 +99,7 @@ export const RSVPForm: React.FC<RSVPFormProps> = ({ weddingId }) => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="bg-white p-8 md:p-12 rounded-[48px] shadow-2xl border border-slate-100 text-center space-y-8"
+            className={`${inline ? '' : 'bg-white p-8 md:p-12 rounded-[48px] shadow-2xl border border-slate-100'} text-center space-y-8`}
           >
             <div className="w-20 h-20 bg-rose-50 rounded-3xl flex items-center justify-center mx-auto text-rose-500">
               <Heart className="w-10 h-10 fill-rose-500" />
@@ -161,7 +162,7 @@ export const RSVPForm: React.FC<RSVPFormProps> = ({ weddingId }) => {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white p-8 md:p-12 rounded-[48px] shadow-2xl border border-slate-100 space-y-8"
+            className={`${inline ? '' : 'bg-white p-8 md:p-12 rounded-[48px] shadow-2xl border border-slate-100'} space-y-8`}
           >
             <div className="flex items-center justify-between">
               <div className="space-y-1">
@@ -305,7 +306,7 @@ export const RSVPForm: React.FC<RSVPFormProps> = ({ weddingId }) => {
             key="success"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white p-12 rounded-[48px] shadow-2xl border border-slate-100 text-center space-y-8"
+            className={`${inline ? '' : 'bg-white p-12 rounded-[48px] shadow-2xl border border-slate-100'} text-center space-y-8`}
           >
             <div className="w-24 h-24 bg-emerald-50 rounded-full flex items-center justify-center mx-auto text-emerald-500">
               <CheckCircle2 className="w-12 h-12" />
