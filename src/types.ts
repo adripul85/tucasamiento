@@ -63,6 +63,31 @@ export interface Post {
   likes: number;
 }
 
+export interface WeddingWebsite {
+  id: string;
+  weddingId: string;
+  userId?: string; // Added for security rules
+  templateId: string;
+  welcomeTitle: string;
+  welcomeMessage: string;
+  invitationText: string;
+  published: boolean;
+  theme: {
+    primaryColor: string;
+    secondaryColor: string;
+    fontFamily: string;
+    backgroundImage?: string;
+  };
+  sections: {
+    id: string;
+    type: 'welcome' | 'date-location' | 'invitation' | 'rsvp' | 'gallery' | 'story';
+    title: string;
+    content: string;
+    order: number;
+    visible: boolean;
+  }[];
+}
+
 export interface UserProfile {
   uid: string;
   displayName: string;

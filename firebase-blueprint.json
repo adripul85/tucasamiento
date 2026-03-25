@@ -113,12 +113,31 @@
         "role": { "type": "string", "enum": ["admin", "user"], "description": "User role." }
       },
       "required": ["email", "role"]
+    },
+    "WeddingWebsite": {
+      "title": "WeddingWebsite",
+      "description": "Public wedding website configuration.",
+      "type": "object",
+      "properties": {
+        "weddingId": { "type": "string", "description": "Reference to the wedding." },
+        "templateId": { "type": "string", "description": "Selected template ID." },
+        "welcomeTitle": { "type": "string", "description": "Welcome title." },
+        "welcomeMessage": { "type": "string", "description": "Welcome message." },
+        "invitationText": { "type": "string", "description": "Invitation text." },
+        "published": { "type": "boolean", "description": "Whether the website is public." },
+        "theme": { "type": "object", "description": "Theme settings." }
+      },
+      "required": ["weddingId", "templateId", "published"]
     }
   },
   "firestore": {
     "/weddings/{weddingId}": {
       "schema": "Wedding",
       "description": "Wedding details."
+    },
+    "/weddingWebsites/{weddingId}": {
+      "schema": "WeddingWebsite",
+      "description": "Public wedding website configuration."
     },
     "/weddings/{weddingId}/guests/{guestId}": {
       "schema": "Guest",

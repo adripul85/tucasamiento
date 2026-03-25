@@ -9,10 +9,15 @@ import { Tasks } from './components/Tasks';
 import { Budget } from './components/Budget';
 import { VendorSearch } from './components/VendorSearch';
 import { RSVPForm } from './components/RSVPForm';
+import { WebsiteBuilder } from './components/WebsiteBuilder';
+import { WeddingWebsiteView } from './components/WeddingWebsiteView';
 import { Auth } from './components/Auth';
-import { Heart, Calendar, MapPin, Settings, X, LogOut, Star, ChevronRight, MessageSquare, User as UserIcon, BookOpen, CheckSquare, Users, Calculator, ArrowRight, Share2, Utensils, Music } from 'lucide-react';
+import { ProDashboard } from './components/ProDashboard';
+import { Heart, Calendar, MapPin, Settings, X, LogOut, Star, ChevronRight, MessageSquare, User as UserIcon, BookOpen, CheckSquare, Users, Calculator, ArrowRight, Share2, Utensils, Music, Globe } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getMessagingSafe, getToken, onMessage } from './firebase';
+
+export { db, auth };
 
 export enum OperationType {
   CREATE = 'create',
@@ -324,8 +329,21 @@ const EditProfileModal: React.FC<{ wedding: Wedding; onClose: () => void }> = ({
   const [date, setDate] = useState(wedding.date);
   const [location, setLocation] = useState(wedding.location);
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
+
+  const validate = () => {
+    const newErrors: { [key: string]: string } = {};
+    if (!partner1.trim()) newErrors.partner1 = 'El nombre es obligatorio';
+    if (!partner2.trim()) newErrors.partner2 = 'El nombre es obligatorio';
+    if (!date) newErrors.date = 'La fecha es obligatoria';
+    if (!location.trim()) newErrors.location = 'La ubicación es obligatoria';
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleSave = async () => {
+    if (!validate()) return;
     setLoading(true);
     try {
       await updateDoc(doc(db, 'weddings', wedding.id), {
@@ -363,20 +381,28 @@ const EditProfileModal: React.FC<{ wedding: Wedding; onClose: () => void }> = ({
               <input 
                 type="text" 
                 value={partner1}
-                onChange={(e) => setPartner1(e.target.value)}
-                className="w-full px-4 py-3 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-rose-500/20 transition-all"
+                onChange={(e) => {
+                  setPartner1(e.target.value);
+                  if (errors.partner1) setErrors(prev => ({ ...prev, partner1: '' }));
+                }}
+                className={`w-full px-4 py-3 rounded-2xl bg-slate-50 border-2 transition-all ${errors.partner1 ? 'border-rose-500 ring-2 ring-rose-500/10' : 'border-transparent focus:ring-2 focus:ring-rose-500/20'}`}
                 placeholder="Nombre"
               />
+              {errors.partner1 && <p className="text-[10px] text-rose-500 font-bold mt-1 ml-1">{errors.partner1}</p>}
             </div>
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Pareja 2</label>
               <input 
                 type="text" 
                 value={partner2}
-                onChange={(e) => setPartner2(e.target.value)}
-                className="w-full px-4 py-3 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-rose-500/20 transition-all"
+                onChange={(e) => {
+                  setPartner2(e.target.value);
+                  if (errors.partner2) setErrors(prev => ({ ...prev, partner2: '' }));
+                }}
+                className={`w-full px-4 py-3 rounded-2xl bg-slate-50 border-2 transition-all ${errors.partner2 ? 'border-rose-500 ring-2 ring-rose-500/10' : 'border-transparent focus:ring-2 focus:ring-rose-500/20'}`}
                 placeholder="Nombre"
               />
+              {errors.partner2 && <p className="text-[10px] text-rose-500 font-bold mt-1 ml-1">{errors.partner2}</p>}
             </div>
           </div>
           <div>
@@ -384,19 +410,27 @@ const EditProfileModal: React.FC<{ wedding: Wedding; onClose: () => void }> = ({
             <input 
               type="date" 
               value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full px-4 py-3 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-rose-500/20 transition-all"
+              onChange={(e) => {
+                setDate(e.target.value);
+                if (errors.date) setErrors(prev => ({ ...prev, date: '' }));
+              }}
+              className={`w-full px-4 py-3 rounded-2xl bg-slate-50 border-2 transition-all ${errors.date ? 'border-rose-500 ring-2 ring-rose-500/10' : 'border-transparent focus:ring-2 focus:ring-rose-500/20'}`}
             />
+            {errors.date && <p className="text-[10px] text-rose-500 font-bold mt-1 ml-1">{errors.date}</p>}
           </div>
           <div>
             <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Ubicación</label>
             <input 
               type="text" 
               value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              className="w-full px-4 py-3 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-rose-500/20 transition-all"
+              onChange={(e) => {
+                setLocation(e.target.value);
+                if (errors.location) setErrors(prev => ({ ...prev, location: '' }));
+              }}
+              className={`w-full px-4 py-3 rounded-2xl bg-slate-50 border-2 transition-all ${errors.location ? 'border-rose-500 ring-2 ring-rose-500/10' : 'border-transparent focus:ring-2 focus:ring-rose-500/20'}`}
               placeholder="Ej: Ciudad de México"
             />
+            {errors.location && <p className="text-[10px] text-rose-500 font-bold mt-1 ml-1">{errors.location}</p>}
           </div>
         </div>
         
@@ -804,6 +838,7 @@ const WeddingManager: React.FC<{ user: User }> = ({ user }) => {
       case 'tasks': return <Tasks weddingId={wedding.id} />;
       case 'budget': return <Budget weddingId={wedding.id} />;
       case 'vendors': return <VendorSearch weddingId={wedding.id} />;
+      case 'website': return <WebsiteBuilder wedding={wedding} />;
       case 'rsvp': return <RSVPForm weddingId={wedding.id} />;
       default: return <Dashboard wedding={wedding} setActiveTab={setActiveTab} />;
     }
@@ -835,13 +870,37 @@ const WeddingManager: React.FC<{ user: User }> = ({ user }) => {
 };
 
 export default function App() {
+  const [publicWeddingId, setPublicWeddingId] = useState<string | null>(null);
+  const [userType, setUserType] = useState<'couple' | 'vendor'>('couple');
+
   useEffect(() => {
     testConnection();
+    
+    // Check for public wedding ID in URL
+    const params = new URLSearchParams(window.location.search);
+    const wId = params.get('weddingId');
+    if (wId) {
+      setPublicWeddingId(wId);
+    }
+
+    // Check for user type in URL for testing
+    const type = params.get('type');
+    if (type === 'vendor') {
+      setUserType('vendor');
+    }
   }, []);
 
+  if (publicWeddingId) {
+    return <WeddingWebsiteView weddingId={publicWeddingId} />;
+  }
+
   return (
-    <Auth>
-      {(user) => <WeddingManager user={user} />}
+    <Auth onLoginPro={() => setUserType('vendor')}>
+      {(user) => (
+        userType === 'vendor' 
+          ? <ProDashboard user={user} onNavigate={(page) => console.log('Navigate to:', page)} />
+          : <WeddingManager user={user} />
+      )}
     </Auth>
   );
 }

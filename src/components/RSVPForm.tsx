@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { db } from '../firebase';
+import { db, handleFirestoreError, OperationType } from '../App';
 import { collection, query, where, getDocs, updateDoc, doc, addDoc } from 'firebase/firestore';
-import { handleFirestoreError, OperationType } from '../App';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, Users, Utensils, MessageSquare, CheckCircle2, Search, Loader2 } from 'lucide-react';
+import { Heart, Users, Utensils, MessageSquare, CheckCircle2, Search, Loader2, XCircle, Plus, ArrowLeft } from 'lucide-react';
 
 interface RSVPFormProps {
   weddingId: string;
@@ -13,6 +12,7 @@ export const RSVPForm: React.FC<RSVPFormProps> = ({ weddingId }) => {
   const [step, setStep] = useState<'search' | 'form' | 'success'>('search');
   const [name, setName] = useState('');
   const [foundGuest, setFoundGuest] = useState<any>(null);
+  const [isNewGuest, setIsNewGuest] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,7 +40,7 @@ export const RSVPForm: React.FC<RSVPFormProps> = ({ weddingId }) => {
         setFoundGuest(guestData);
         setStep('form');
       } else {
-        setError('No pudimos encontrar tu nombre en la lista. Por favor, verifica que esté escrito correctamente.');
+        setError('No pudimos encontrar tu nombre en la lista. Si crees que es un error, puedes registrarte como nuevo invitado.');
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.GET, `weddings/${weddingId}/guests`);
@@ -55,16 +55,34 @@ export const RSVPForm: React.FC<RSVPFormProps> = ({ weddingId }) => {
     setLoading(true);
 
     try {
-      await updateDoc(doc(db, `weddings/${weddingId}/guests`, foundGuest.id), {
-        status,
-        attendeesCount: status === 'confirmed' ? attendeesCount : 0,
-        dietaryRestrictions,
-        message,
-        updatedAt: new Date().toISOString()
-      });
+      if (isNewGuest) {
+        await addDoc(collection(db, `weddings/${weddingId}/guests`), {
+          weddingId,
+          name: name.trim(),
+          status,
+          attendeesCount: status === 'confirmed' ? attendeesCount : 0,
+          dietaryRestrictions,
+          message,
+          plusOne: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      } else {
+        await updateDoc(doc(db, `weddings/${weddingId}/guests`, foundGuest.id), {
+          status,
+          attendeesCount: status === 'confirmed' ? attendeesCount : 0,
+          dietaryRestrictions,
+          message,
+          updatedAt: new Date().toISOString()
+        });
+      }
       setStep('success');
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `weddings/${weddingId}/guests/${foundGuest.id}`);
+      if (isNewGuest) {
+        handleFirestoreError(err, OperationType.CREATE, `weddings/${weddingId}/guests`);
+      } else {
+        handleFirestoreError(err, OperationType.UPDATE, `weddings/${weddingId}/guests/${foundGuest.id}`);
+      }
       setError('Ocurrió un error al enviar tu respuesta.');
     } finally {
       setLoading(false);
@@ -118,6 +136,21 @@ export const RSVPForm: React.FC<RSVPFormProps> = ({ weddingId }) => {
               >
                 {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : 'Buscar mi Invitación'}
               </button>
+
+              <div className="pt-4">
+                <p className="text-slate-400 text-sm mb-4">¿No estás en la lista?</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsNewGuest(true);
+                    setStep('form');
+                  }}
+                  className="flex items-center gap-2 text-rose-500 font-bold hover:underline mx-auto"
+                >
+                  <Plus className="w-4 h-4" />
+                  Registrarme como nuevo invitado
+                </button>
+              </div>
             </form>
           </motion.div>
         )}
@@ -132,8 +165,22 @@ export const RSVPForm: React.FC<RSVPFormProps> = ({ weddingId }) => {
           >
             <div className="flex items-center justify-between">
               <div className="space-y-1">
-                <p className="text-rose-500 font-bold text-xs uppercase tracking-widest">¡Hola, {foundGuest.name}!</p>
-                <h2 className="text-3xl font-serif font-bold text-slate-800">Completa tu RSVP</h2>
+                <button 
+                  onClick={() => {
+                    setStep('search');
+                    setIsNewGuest(false);
+                  }}
+                  className="flex items-center gap-1 text-slate-400 hover:text-rose-500 transition-colors text-xs font-bold uppercase tracking-widest mb-2"
+                >
+                  <ArrowLeft className="w-3 h-3" />
+                  Volver
+                </button>
+                <p className="text-rose-500 font-bold text-xs uppercase tracking-widest">
+                  {isNewGuest ? '¡Bienvenido!' : `¡Hola, ${foundGuest.name}!`}
+                </p>
+                <h2 className="text-3xl font-serif font-bold text-slate-800">
+                  {isNewGuest ? 'Regístrate para asistir' : 'Completa tu RSVP'}
+                </h2>
               </div>
               <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-500">
                 <Heart className="w-6 h-6 fill-rose-500" />
@@ -141,6 +188,19 @@ export const RSVPForm: React.FC<RSVPFormProps> = ({ weddingId }) => {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-8">
+              {isNewGuest && (
+                <div className="space-y-3">
+                  <label className="block text-sm font-bold text-slate-700 ml-1">Nombre Completo</label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Tu nombre y apellido..."
+                    className="w-full bg-slate-50 border border-slate-100 rounded-3xl px-6 py-4 outline-none focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 transition-all"
+                    required
+                  />
+                </div>
+              )}
               {/* Attendance Toggle */}
               <div className="grid grid-cols-2 gap-4">
                 <button
@@ -270,9 +330,3 @@ export const RSVPForm: React.FC<RSVPFormProps> = ({ weddingId }) => {
     </div>
   );
 };
-
-const XCircle: React.FC<{ className?: string }> = ({ className }) => (
-  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
-);

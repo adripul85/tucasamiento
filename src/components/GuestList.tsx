@@ -3,8 +3,9 @@ import { db } from '../firebase';
 import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../App';
 import { Guest } from '../types';
-import { UserPlus, Trash2, CheckCircle2, XCircle, Clock, Search } from 'lucide-react';
+import { UserPlus, Trash2, CheckCircle2, XCircle, Clock, Search, Share2, Copy, ExternalLink, MessageCircle, MoreHorizontal } from 'lucide-react';
 import { ConfirmationDialog } from './ConfirmationDialog';
+import { motion, AnimatePresence } from 'motion/react';
 
 export const GuestList: React.FC<{ weddingId: string }> = ({ weddingId }) => {
   const [guests, setGuests] = useState<Guest[]>([]);
@@ -16,6 +17,10 @@ export const GuestList: React.FC<{ weddingId: string }> = ({ weddingId }) => {
   const [plusOneFilter, setPlusOneFilter] = useState<string>('all');
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [guestToDelete, setGuestToDelete] = useState<string | null>(null);
+  const [shareModalGuest, setShareModalGuest] = useState<Guest | null>(null);
+  const [showBulkInvite, setShowBulkInvite] = useState(false);
+
+  const weddingUrl = `${window.location.origin}?weddingId=${weddingId}`;
 
   useEffect(() => {
     const q = query(collection(db, `weddings/${weddingId}/guests`));
@@ -97,6 +102,20 @@ export const GuestList: React.FC<{ weddingId: string }> = ({ weddingId }) => {
     declined: guests.filter(g => g.status === 'declined').length,
   };
 
+  const getInviteMessage = (guestName: string) => {
+    return `¡Hola ${guestName}! Queremos invitarte a nuestra boda. Puedes ver todos los detalles y confirmar tu asistencia aquí: ${weddingUrl}`;
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    // Could add a toast here
+  };
+
+  const shareWhatsApp = (guestName: string) => {
+    const message = encodeURIComponent(getInviteMessage(guestName));
+    window.open(`https://wa.me/?text=${message}`, '_blank');
+  };
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -104,14 +123,31 @@ export const GuestList: React.FC<{ weddingId: string }> = ({ weddingId }) => {
           <h2 className="text-3xl font-serif font-bold text-slate-800">Lista de Invitados</h2>
           <p className="text-slate-500">Gestiona quiénes te acompañarán en tu gran día.</p>
         </div>
-        <div className="flex gap-2 bg-white p-1 rounded-2xl shadow-sm border border-slate-100">
-          <div className="px-4 py-2 text-center">
-            <div className="text-xl font-bold text-slate-800">{stats.total}</div>
-            <div className="text-[10px] uppercase tracking-wider text-slate-400">Total</div>
-          </div>
-          <div className="px-4 py-2 text-center border-l border-slate-100">
-            <div className="text-xl font-bold text-emerald-500">{stats.confirmed}</div>
-            <div className="text-[10px] uppercase tracking-wider text-slate-400">Confirmados</div>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setShowBulkInvite(true)}
+            className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-2xl font-bold text-sm hover:bg-indigo-100 transition-all flex items-center gap-2"
+          >
+            <Share2 className="w-4 h-4" />
+            Invitación Masiva
+          </button>
+          <div className="flex gap-2 bg-white p-1 rounded-2xl shadow-sm border border-slate-100 overflow-x-auto">
+            <div className="px-4 py-2 text-center min-w-[80px]">
+              <div className="text-xl font-bold text-slate-800">{stats.total}</div>
+              <div className="text-[10px] uppercase tracking-wider text-slate-400">Total</div>
+            </div>
+            <div className="px-4 py-2 text-center border-l border-slate-100 min-w-[80px]">
+              <div className="text-xl font-bold text-emerald-500">{stats.confirmed}</div>
+              <div className="text-[10px] uppercase tracking-wider text-slate-400">Confirmados</div>
+            </div>
+            <div className="px-4 py-2 text-center border-l border-slate-100 min-w-[80px]">
+              <div className="text-xl font-bold text-amber-500">{stats.pending}</div>
+              <div className="text-[10px] uppercase tracking-wider text-slate-400">Pendientes</div>
+            </div>
+            <div className="px-4 py-2 text-center border-l border-slate-100 min-w-[80px]">
+              <div className="text-xl font-bold text-rose-500">{stats.declined}</div>
+              <div className="text-[10px] uppercase tracking-wider text-slate-400">Declinados</div>
+            </div>
           </div>
         </div>
       </header>
@@ -240,6 +276,14 @@ export const GuestList: React.FC<{ weddingId: string }> = ({ weddingId }) => {
             </div>
 
             <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setShareModalGuest(guest)}
+                className="p-2 text-slate-300 hover:text-indigo-500 hover:bg-indigo-50 rounded-xl transition-all"
+                title="Compartir invitación"
+              >
+                <Share2 className="w-5 h-5" />
+              </button>
+
               <select 
                 value={guest.status}
                 onChange={(e) => updateStatus(guest.id, e.target.value as Guest['status'])}
@@ -278,6 +322,100 @@ export const GuestList: React.FC<{ weddingId: string }> = ({ weddingId }) => {
         confirmText="Eliminar"
         cancelText="Cancelar"
       />
+
+      {/* Share Invitation Modal */}
+      <AnimatePresence>
+        {shareModalGuest && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-white rounded-[40px] w-full max-w-md overflow-hidden shadow-2xl"
+            >
+              <div className="p-8 space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-2xl font-serif font-bold text-slate-800">Enviar Invitación</h3>
+                  <button onClick={() => setShareModalGuest(null)} className="p-2 hover:bg-slate-50 rounded-full transition-colors">
+                    <XCircle className="w-6 h-6 text-slate-300" />
+                  </button>
+                </div>
+
+                <div className="p-6 bg-slate-50 rounded-3xl space-y-3">
+                  <p className="text-sm text-slate-600 font-medium italic">"{getInviteMessage(shareModalGuest.name)}"</p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3">
+                  <button 
+                    onClick={() => shareWhatsApp(shareModalGuest.name)}
+                    className="flex items-center justify-center gap-3 w-full py-4 bg-[#25D366] text-white font-bold rounded-2xl hover:opacity-90 transition-all shadow-lg shadow-[#25D366]/20"
+                  >
+                    <MessageCircle className="w-5 h-5" />
+                    Enviar por WhatsApp
+                  </button>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button 
+                      onClick={() => copyToClipboard(getInviteMessage(shareModalGuest.name))}
+                      className="flex items-center justify-center gap-2 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all"
+                    >
+                      <Copy className="w-4 h-4" />
+                      Copiar Mensaje
+                    </button>
+                    <button 
+                      onClick={() => copyToClipboard(weddingUrl)}
+                      className="flex items-center justify-center gap-2 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      Copiar Link
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showBulkInvite && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-white rounded-[40px] w-full max-w-md overflow-hidden shadow-2xl"
+            >
+              <div className="p-8 space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-2xl font-serif font-bold text-slate-800">Invitación Masiva</h3>
+                  <button onClick={() => setShowBulkInvite(false)} className="p-2 hover:bg-slate-50 rounded-full transition-colors">
+                    <XCircle className="w-6 h-6 text-slate-300" />
+                  </button>
+                </div>
+
+                <p className="text-slate-500 text-sm">
+                  Copia el link de tu sitio web para compartirlo con todos tus invitados a través de tus redes sociales o grupos de mensajería.
+                </p>
+
+                <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 flex items-center justify-between gap-4">
+                  <span className="text-xs font-mono text-slate-500 truncate">{weddingUrl}</span>
+                  <button 
+                    onClick={() => copyToClipboard(weddingUrl)}
+                    className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
+                  >
+                    <Copy className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <button 
+                  onClick={() => setShowBulkInvite(false)}
+                  className="w-full py-4 bg-rose-500 text-white font-bold rounded-2xl hover:bg-rose-600 transition-all shadow-lg shadow-rose-500/20"
+                >
+                  Listo
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

@@ -85,7 +85,7 @@ service cloud.firestore {
     
     function isSuperAdmin() {
       return isAuthenticated() && 
-        request.auth.token.email == "lucasadrianpulido@gmail.com";
+        request.auth.token.email.lower() == "lucasadrianpulido@gmail.com";
     }
 
     function isAdmin() {
@@ -206,9 +206,61 @@ service cloud.firestore {
              data.role in ['admin', 'user'];
     }
 
+    function isValidWeddingWebsite(data) {
+      return hasOnlyAllowedFields(['id', 'weddingId', 'userId', 'templateId', 'welcomeTitle', 'welcomeMessage', 'invitationText', 'published', 'theme', 'sections']) &&
+             data.weddingId is string && data.weddingId.size() <= 128 &&
+             (data.get('userId', null) == null || (data.userId is string && data.userId.size() <= 128)) &&
+             data.templateId is string && data.templateId.size() <= 100 &&
+             data.published is bool &&
+             (data.get('welcomeTitle', null) == null || (data.welcomeTitle is string && data.welcomeTitle.size() <= 200)) &&
+             (data.get('welcomeMessage', null) == null || (data.welcomeMessage is string && data.welcomeMessage.size() <= 2000)) &&
+             (data.get('invitationText', null) == null || (data.invitationText is string && data.invitationText.size() <= 2000));
+    }
+
+    function isWebsitePublished(weddingId) {
+      return exists(/databases/$(database)/documents/weddingWebsites/$(weddingId)) &&
+             get(/databases/$(database)/documents/weddingWebsites/$(weddingId)).data.published == true;
+    }
+
+    function isWebsiteOwner(weddingId) {
+      return isAuthenticated() && (
+        isSuperAdmin() ||
+        isWeddingOwner(weddingId) ||
+        (exists(/databases/$(database)/documents/weddingWebsites/$(weddingId)) && 
+         get(/databases/$(database)/documents/weddingWebsites/$(weddingId)).data.get('userId', null) == request.auth.uid)
+      );
+    }
+
+    function isValidVendor(data) {
+      return hasOnlyAllowedFields(['userId', 'businessName', 'province', 'city', 'sectorType', 'sectorActivity', 'contactName', 'contactPhone', 'contactEmail', 'createdAt']) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+             data.businessName is string && data.businessName.size() > 0 && data.businessName.size() <= 200 &&
+             data.province is string && data.province.size() > 0 &&
+             data.city is string && data.city.size() > 0 &&
+             data.sectorType is string &&
+             data.sectorActivity is string &&
+             data.contactName is string && data.contactName.size() > 0 &&
+             data.contactPhone is string && data.contactPhone.size() > 0 &&
+             data.contactEmail is string && isValidEmail(data.contactEmail) &&
+             isValidDateString(data.createdAt);
+    }
+
     // Rules
+    match /vendors/{vendorId} {
+      allow get: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow list: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && 
+                    request.resource.data.userId == request.auth.uid &&
+                    isValidVendor(request.resource.data);
+      allow update: if isAuthenticated() && 
+                    (resource.data.userId == request.auth.uid || isAdmin()) &&
+                    request.resource.data.userId == resource.data.userId &&
+                    isValidVendor(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
     match /weddings/{weddingId} {
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow read: if (isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin())) || isWebsitePublished(weddingId);
       
       allow create: if isAuthenticated() && 
                     isValidWedding(request.resource.data) &&
@@ -222,9 +274,12 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
 
       match /guests/{guestId} {
-        allow read: if isWeddingOwner(weddingId);
-        allow create: if isWeddingOwner(weddingId) && isValidGuest(request.resource.data);
-        allow update: if isWeddingOwner(weddingId) && isValidGuest(request.resource.data);
+        allow read: if isWeddingOwner(weddingId) || isWebsitePublished(weddingId);
+        allow create: if (isWeddingOwner(weddingId) || isWebsitePublished(weddingId)) && isValidGuest(request.resource.data);
+        allow update: if (isWeddingOwner(weddingId) && isValidGuest(request.resource.data)) || 
+                         (isWebsitePublished(weddingId) && 
+                          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'attendeesCount', 'dietaryRestrictions', 'message', 'updatedAt']) &&
+                          isValidGuest(request.resource.data));
         allow delete: if isWeddingOwner(weddingId);
       }
 
@@ -276,6 +331,13 @@ service cloud.firestore {
       allow update: if isAuthenticated() && isValidUser(request.resource.data) &&
                     (isOwner(userId) && request.resource.data.role == resource.data.role || isAdmin());
       allow delete: if isAdmin();
+    }
+
+    match /weddingWebsites/{weddingId} {
+      allow read: if isWebsitePublished(weddingId) || isWebsiteOwner(weddingId);
+      allow create: if isWeddingOwner(weddingId) && isValidWeddingWebsite(request.resource.data);
+      allow update: if isWebsiteOwner(weddingId) && isValidWeddingWebsite(request.resource.data);
+      allow delete: if isWebsiteOwner(weddingId);
     }
 
     match /test/{docId} {
