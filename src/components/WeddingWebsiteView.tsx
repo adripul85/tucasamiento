@@ -402,53 +402,28 @@ export const WeddingWebsiteView: React.FC<WeddingWebsiteViewProps> = ({
               <h2 className="text-4xl md:text-5xl font-bold mb-4">{section.title}</h2>
               <div className={`h-1 w-24 mx-auto ${styles.accent} bg-current`} />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <motion.div 
-                whileInView={{ opacity: 1, y: 0 }}
-                initial={{ opacity: 0, y: 20 }}
-                viewport={{ once: true }}
-                className={`p-12 ${styles.card} space-y-6 text-center`}
-              >
-                <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center ${styles.accent} bg-current/10`}>
-                  <Utensils className="w-8 h-8" />
-                </div>
-                <h3 className="text-2xl font-bold">Comida</h3>
-                <p className="text-lg opacity-70 leading-relaxed">
-                  {section.details?.food || 'Menú gourmet de 4 tiempos con opciones vegetarianas.'}
-                </p>
-              </motion.div>
-
-              <motion.div 
-                whileInView={{ opacity: 1, y: 0 }}
-                initial={{ opacity: 0, y: 20 }}
-                viewport={{ once: true }}
-                transition={{ delay: 0.1 }}
-                className={`p-12 ${styles.card} space-y-6 text-center`}
-              >
-                <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center ${styles.accent} bg-current/10`}>
-                  <Music className="w-8 h-8" />
-                </div>
-                <h3 className="text-2xl font-bold">Música</h3>
-                <p className="text-lg opacity-70 leading-relaxed">
-                  {section.details?.music || 'Banda en vivo durante el banquete y DJ para la fiesta.'}
-                </p>
-              </motion.div>
-
-              <motion.div 
-                whileInView={{ opacity: 1, y: 0 }}
-                initial={{ opacity: 0, y: 20 }}
-                viewport={{ once: true }}
-                transition={{ delay: 0.2 }}
-                className={`p-12 ${styles.card} space-y-6 text-center`}
-              >
-                <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center ${styles.accent} bg-current/10`}>
-                  <Users className="w-8 h-8" />
-                </div>
-                <h3 className="text-2xl font-bold">Código de Vestimenta</h3>
-                <p className="text-lg opacity-70 leading-relaxed">
-                  {section.details?.dressCode || 'Formal / Etiqueta. Los colores claros son bienvenidos.'}
-                </p>
-              </motion.div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+              {[
+                { icon: Utensils, label: 'Cena Gourmet', desc: section.details?.food || 'Menú de 4 tiempos' },
+                { icon: Music, label: 'Música en Vivo', desc: section.details?.music || 'Banda y DJ' },
+                { icon: Camera, label: 'Photobooth', desc: section.details?.photobooth || 'Recuerdos divertidos' },
+                { icon: Users, label: 'Dress Code', desc: section.details?.dressCode || 'Formal / Etiqueta' },
+              ].map((item, i) => (
+                <motion.div 
+                  key={i}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  initial={{ opacity: 0, y: 20 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.1 }}
+                  className="text-center space-y-4"
+                >
+                  <div className={`w-12 h-12 mx-auto flex items-center justify-center ${styles.accent}`}>
+                    <item.icon className="w-8 h-8" />
+                  </div>
+                  <h4 className="font-bold text-lg">{item.label}</h4>
+                  <p className="text-sm opacity-50">{item.desc}</p>
+                </motion.div>
+              ))}
             </div>
           </section>
         );
@@ -487,39 +462,6 @@ export const WeddingWebsiteView: React.FC<WeddingWebsiteViewProps> = ({
       {(website.sections || [])
         .sort((a, b) => a.order - b.order)
         .map(section => renderSection(section))}
-
-      {/* Hardcoded Details Section (Optional, maybe keep as default if not in sections) */}
-      {!website.sections?.find(s => s.type === 'story' || s.type === 'gallery') && (
-        <section className="py-24 px-8 max-w-6xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">Detalles del Evento</h2>
-            <div className={`h-1 w-24 mx-auto ${styles.accent} bg-current`} />
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {[
-              { icon: Utensils, label: 'Cena Gourmet', desc: 'Menú de 4 tiempos' },
-              { icon: Music, label: 'Música en Vivo', desc: 'Banda y DJ' },
-              { icon: Camera, label: 'Photobooth', desc: 'Recuerdos divertidos' },
-              { icon: Users, label: 'Dress Code', desc: 'Formal / Etiqueta' },
-            ].map((item, i) => (
-              <motion.div 
-                key={i}
-                whileInView={{ opacity: 1, y: 0 }}
-                initial={{ opacity: 0, y: 20 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                className="text-center space-y-4"
-              >
-                <div className={`w-12 h-12 mx-auto flex items-center justify-center ${styles.accent}`}>
-                  <item.icon className="w-8 h-8" />
-                </div>
-                <h4 className="font-bold text-lg">{item.label}</h4>
-                <p className="text-sm opacity-50">{item.desc}</p>
-              </motion.div>
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* Footer / RSVP CTA */}
       <footer className="py-32 px-8 text-center bg-current/5">

@@ -8,12 +8,17 @@ import { GuestList } from './components/GuestList';
 import { Tasks } from './components/Tasks';
 import { Budget } from './components/Budget';
 import { VendorSearch } from './components/VendorSearch';
+import { VendorDetail } from './components/VendorDetail';
 import { RSVPForm } from './components/RSVPForm';
 import { WebsiteBuilder } from './components/WebsiteBuilder';
+import { Blog } from './components/Blog';
+import { Honeymoon } from './components/Honeymoon';
+import { Community } from './components/Community';
+import { FavoritesList } from './components/FavoritesList';
 import { WeddingWebsiteView } from './components/WeddingWebsiteView';
 import { Auth } from './components/Auth';
 import { ProDashboard } from './components/ProDashboard';
-import { Heart, Calendar, MapPin, Settings, X, LogOut, Star, ChevronRight, MessageSquare, User as UserIcon, BookOpen, CheckSquare, Users, Calculator, ArrowRight, Share2, Utensils, Music, Globe } from 'lucide-react';
+import { Heart, Calendar, MapPin, Settings, X, LogOut, Star, ChevronRight, MessageSquare, User as UserIcon, BookOpen, CheckSquare, Users, Calculator, ArrowRight, Share2, Utensils, Music, Globe, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getMessagingSafe, getToken, onMessage } from './firebase';
 
@@ -317,10 +322,10 @@ const Countdown: React.FC<{ targetDate: string | null; compact?: boolean }> = ({
 };
 
 const FEATURED_VENDORS = [
-  { id: 1, name: 'Hacienda Los Morales', category: 'Lugar', rating: 4.9, image: 'https://picsum.photos/seed/hacienda/400/300', location: 'CDMX' },
-  { id: 2, name: 'Florería El Girasol', category: 'Flores', rating: 4.8, image: 'https://picsum.photos/seed/flowers/400/300', location: 'Edomex' },
-  { id: 3, name: 'DJ Master Mix', category: 'Música', rating: 4.7, image: 'https://picsum.photos/seed/dj/400/300', location: 'CDMX' },
-  { id: 4, name: 'Catering Gourmet', category: 'Banquete', rating: 4.9, image: 'https://picsum.photos/seed/catering/400/300', location: 'CDMX' },
+  { id: 1, name: 'Tienda de Eventos', category: 'Alquiler de livings', rating: 4.9, image: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=400&q=80', location: 'Buenos Aires' },
+  { id: 2, name: 'Tico Cid', category: 'Fotografía', rating: 4.8, image: 'https://images.unsplash.com/photo-1537633552985-df8429e8048b?auto=format&fit=crop&w=400&q=80', location: 'Buenos Aires' },
+  { id: 3, name: 'Maisto Leiva Dúo', category: 'Música', rating: 4.7, image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=400&q=80', location: 'Buenos Aires' },
+  { id: 4, name: 'Gabriela Schmitz', category: 'Wedding Planner', rating: 4.9, image: 'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&w=400&q=80', location: 'Buenos Aires' },
 ];
 
 const EditProfileModal: React.FC<{ wedding: Wedding; onClose: () => void }> = ({ wedding, onClose }) => {
@@ -816,6 +821,24 @@ const WeddingManager: React.FC<{ user: User }> = ({ user }) => {
   const [activeTab, setActiveTab] = useState('home');
   const [wedding, setWedding] = useState<Wedding | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedVendor, setSelectedVendor] = useState<any>(null);
+  const [favorites, setFavorites] = useState<any[]>([]);
+  const [addingToBudget, setAddingToBudget] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const CATEGORY_MAPPING: Record<string, string> = {
+    'Catering': 'Banquete',
+    'Fotografía': 'Foto y Vídeo',
+    'Música': 'Música',
+    'Lugar': 'Banquete',
+    'Vestido': 'Novia y Complementos',
+    'Decoración': 'Flores y Decoración',
+    'Flores': 'Flores y Decoración',
+    'Transporte': 'Transporte',
+    'Joyería': 'Joyería',
+    'Belleza': 'Belleza y Salud',
+    'Invitaciones': 'Invitaciones',
+  };
 
   useEffect(() => {
     const q = query(collection(db, 'weddings'), where('userId', '==', user.uid), limit(1));
@@ -830,15 +853,121 @@ const WeddingManager: React.FC<{ user: User }> = ({ user }) => {
     return unsubscribe;
   }, [user.uid]);
 
+  useEffect(() => {
+    if (!wedding) return;
+    const q = query(collection(db, 'weddings', wedding.id, 'favoriteVendors'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const favs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setFavorites(favs);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `weddings/${wedding.id}/favoriteVendors`);
+    });
+    return unsubscribe;
+  }, [wedding?.id]);
+
+  useEffect(() => {
+    setSelectedVendor(null);
+  }, [activeTab]);
+
+  const handleRateVendor = async (vendor: any, rating: number) => {
+    if (!wedding) return;
+    const existing = favorites.find(f => f.vendorId === vendor.id);
+    if (existing) {
+      try {
+        const { updateDoc } = await import('firebase/firestore');
+        await updateDoc(doc(db, 'weddings', wedding.id, 'favoriteVendors', existing.id), {
+          userRating: rating
+        });
+        // Update selected vendor if it's the one being rated
+        if (selectedVendor && selectedVendor.id === vendor.id) {
+          setSelectedVendor({ ...selectedVendor, userRating: rating });
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `weddings/${wedding.id}/favoriteVendors/${existing.id}`);
+      }
+    } else {
+      try {
+        const { addDoc } = await import('firebase/firestore');
+        await addDoc(collection(db, 'weddings', wedding.id, 'favoriteVendors'), {
+          weddingId: wedding.id,
+          vendorId: vendor.id,
+          name: vendor.name,
+          category: vendor.category,
+          address: vendor.address || null,
+          rating: vendor.rating || null,
+          userRating: rating,
+          lat: vendor.lat || null,
+          lon: vendor.lon || null,
+          photo: null,
+          phone: vendor.phone || null,
+          website: vendor.website || null,
+          openingHours: vendor.openingHours || null,
+          reviews: vendor.reviews || null
+        });
+        if (selectedVendor && selectedVendor.id === vendor.id) {
+          setSelectedVendor({ ...selectedVendor, userRating: rating });
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `weddings/${wedding.id}/favoriteVendors`);
+      }
+    }
+  };
+
+  const handleAddToBudget = async (vendor: any) => {
+    if (!wedding) return;
+    setAddingToBudget(vendor.id);
+    try {
+      const budgetCategory = CATEGORY_MAPPING[vendor.category] || 'Otros';
+      const vendorId = 'vendorId' in vendor ? vendor.vendorId : vendor.id;
+      
+      const { addDoc } = await import('firebase/firestore');
+      await addDoc(collection(db, 'weddings', wedding.id, 'budgetItems'), {
+        weddingId: wedding.id,
+        name: vendor.name,
+        category: budgetCategory,
+        estimated: 0,
+        paid: 0,
+        vendorId: vendorId
+      });
+
+      setSuccessMessage(`¡${vendor.name} añadido al presupuesto!`);
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `weddings/${wedding.id}/budgetItems`);
+    } finally {
+      setAddingToBudget(null);
+    }
+  };
+
   const renderContent = () => {
     if (!wedding) return null;
+    
+    if (selectedVendor) {
+      const fav = favorites.find(f => f.vendorId === selectedVendor.id);
+      const vendorWithRating = { ...selectedVendor, userRating: fav?.userRating };
+      
+      return (
+        <VendorDetail 
+          vendor={vendorWithRating} 
+          onBack={() => setSelectedVendor(null)} 
+          onRate={(r) => handleRateVendor(selectedVendor, r)}
+          onAddToBudget={() => handleAddToBudget(selectedVendor)}
+          isAddingToBudget={addingToBudget === selectedVendor.id}
+        />
+      );
+    }
+
     switch (activeTab) {
       case 'home': return <Dashboard wedding={wedding} setActiveTab={setActiveTab} />;
       case 'guests': return <GuestList weddingId={wedding.id} />;
       case 'tasks': return <Tasks weddingId={wedding.id} />;
       case 'budget': return <Budget weddingId={wedding.id} />;
-      case 'vendors': return <VendorSearch weddingId={wedding.id} />;
+      case 'vendors': return <VendorSearch weddingId={wedding.id} onSelectVendor={setSelectedVendor} />;
+      case 'favorites': return <FavoritesList weddingId={wedding.id} onSelectVendor={setSelectedVendor} />;
       case 'website': return <WebsiteBuilder wedding={wedding} />;
+      case 'blog': return <Blog />;
+      case 'community': return <Community weddingId={wedding.id} />;
+      case 'honeymoon': return <Honeymoon />;
       case 'rsvp': return <RSVPForm weddingId={wedding.id} />;
       default: return <Dashboard wedding={wedding} setActiveTab={setActiveTab} />;
     }
@@ -863,6 +992,19 @@ const WeddingManager: React.FC<{ user: User }> = ({ user }) => {
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
+      <AnimatePresence>
+        {successMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] bg-emerald-50 text-emerald-600 p-4 rounded-2xl flex items-center gap-3 border border-emerald-100 shadow-xl"
+          >
+            <CheckCircle2 className="w-5 h-5" />
+            <span className="font-bold text-sm">{successMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {renderContent()}
       <NotificationManager />
     </Layout>

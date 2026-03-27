@@ -364,27 +364,27 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
     <div className="space-y-6">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-serif font-bold text-slate-800">Tareas Pendientes</h2>
-          <p className="text-slate-500">Organiza paso a paso el gran día.</p>
+          <h2 className="text-2xl md:text-3xl font-serif font-bold text-slate-800 text-center md:text-left">Tareas Pendientes</h2>
+          <p className="text-slate-500 text-center md:text-left text-sm md:text-base">Organiza paso a paso el gran día.</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex bg-white p-1 rounded-2xl border border-slate-100 shadow-sm">
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <div className="flex bg-white p-1 rounded-2xl border border-slate-100 shadow-sm w-full sm:w-auto">
             <button 
               onClick={() => setView('list')}
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${view === 'list' ? 'bg-rose-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`flex-1 sm:flex-none px-4 py-2 rounded-xl text-sm font-bold transition-all ${view === 'list' ? 'bg-rose-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
             >
               Lista
             </button>
             <button 
               onClick={() => setView('calendar')}
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${view === 'calendar' ? 'bg-rose-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`flex-1 sm:flex-none px-4 py-2 rounded-xl text-sm font-bold transition-all ${view === 'calendar' ? 'bg-rose-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
             >
               Calendario
             </button>
           </div>
           <button 
             onClick={() => setShowForm(!showForm)}
-            className="bg-rose-500 text-white px-6 py-3 rounded-2xl hover:bg-rose-600 transition-colors shadow-lg shadow-rose-100 flex items-center gap-2 font-bold whitespace-nowrap"
+            className="w-full sm:w-auto bg-rose-500 text-white px-6 py-3 rounded-2xl hover:bg-rose-600 transition-colors shadow-lg shadow-rose-100 flex items-center justify-center gap-2 font-bold whitespace-nowrap"
           >
             <Plus className="w-5 h-5" />
             Nueva Tarea
@@ -393,13 +393,13 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
       </header>
 
       {/* Progress Section */}
-      <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6 relative overflow-hidden group">
+      <div className="bg-white p-6 md:p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-6 relative overflow-hidden group">
         <div className="absolute top-0 right-0 w-32 h-32 bg-rose-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 duration-700" />
         
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <h3 className="text-xl font-serif font-bold text-slate-800">Tu Progreso</h3>
-            <p className="text-sm text-slate-500">
+          <div className="space-y-1 text-center md:text-left">
+            <h3 className="text-lg md:text-xl font-serif font-bold text-slate-800">Tu Progreso</h3>
+            <p className="text-xs md:text-sm text-slate-500 max-w-xs mx-auto md:mx-0">
               {progress === 100 
                 ? '¡Increíble! Has completado todas las tareas.' 
                 : progress > 70 
@@ -411,16 +411,16 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                 : '¡Es momento de empezar a organizar!'}
             </p>
           </div>
-          <div className="text-right">
+          <div className="text-center md:text-right">
             <motion.span 
               key={progress}
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="text-4xl font-serif font-bold text-rose-500 block"
+              className="text-3xl md:text-4xl font-serif font-bold text-rose-500 block"
             >
               {Math.round(progress)}%
             </motion.span>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+            <span className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest">
               {completedCount} de {tasks.length} completadas
             </span>
           </div>
@@ -441,7 +441,7 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           onSubmit={addTask} 
-          className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-xl space-y-6"
+          className="bg-white p-6 md:p-8 rounded-[32px] border border-slate-100 shadow-xl space-y-6"
         >
           <div className="space-y-4">
             <div className="space-y-2">
@@ -451,7 +451,7 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 placeholder="Ej: Reservar el salón"
-                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all"
+                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 md:px-5 py-3 md:py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all text-sm md:text-base"
               />
             </div>
             
@@ -462,17 +462,17 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Detalles adicionales..."
                 rows={3}
-                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all resize-none"
+                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 md:px-5 py-3 md:py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all resize-none text-sm md:text-base"
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Categoría</label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all appearance-none"
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 md:px-5 py-3 md:py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all appearance-none text-sm md:text-base"
                 >
                   {categories.map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
@@ -484,33 +484,33 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                 <select
                   value={timeframe}
                   onChange={(e) => setTimeframe(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all appearance-none"
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 md:px-5 py-3 md:py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all appearance-none text-sm md:text-base"
                 >
                   {timeframes.map(tf => (
                     <option key={tf} value={tf}>{tf}</option>
                   ))}
                 </select>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 sm:col-span-2 md:col-span-1">
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Fecha de Vencimiento</label>
                 <input
                   type="date"
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all"
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 md:px-5 py-3 md:py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all text-sm md:text-base"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Prioridad</label>
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-2 md:gap-3">
                 {(['low', 'medium', 'high'] as const).map((p) => (
                   <button
                     key={p}
                     type="button"
                     onClick={() => setPriority(p)}
-                    className={`flex-1 py-3 rounded-2xl font-bold text-sm transition-all border-2 ${
+                    className={`flex-1 min-w-[80px] py-3 rounded-2xl font-bold text-xs md:text-sm transition-all border-2 ${
                       priority === p 
                         ? p === 'high' ? 'bg-rose-500 border-rose-500 text-white' :
                           p === 'medium' ? 'bg-amber-500 border-amber-500 text-white' :
@@ -525,17 +525,17 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
             </div>
           </div>
 
-          <div className="flex gap-3 pt-2">
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <button 
               type="button" 
               onClick={() => setShowForm(false)}
-              className="flex-1 bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl hover:bg-slate-200 transition-all"
+              className="w-full sm:flex-1 bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl hover:bg-slate-200 transition-all order-2 sm:order-1"
             >
               Cancelar
             </button>
             <button 
               type="submit" 
-              className="flex-[2] bg-rose-500 text-white font-bold py-4 rounded-2xl hover:bg-rose-600 transition-all shadow-lg shadow-rose-100"
+              className="w-full sm:flex-[2] bg-rose-500 text-white font-bold py-4 rounded-2xl hover:bg-rose-600 transition-all shadow-lg shadow-rose-100 order-1 sm:order-2"
             >
               Guardar Tarea
             </button>
@@ -581,68 +581,68 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                         exit={{ opacity: 0, scale: 0.9 }}
                         whileHover={{ y: -2 }}
                         onClick={() => setSelectedTask(task)}
-                        className={`rounded-3xl border border-slate-100 shadow-sm flex items-stretch overflow-hidden transition-all group cursor-pointer ${
+                        className={`rounded-2xl md:rounded-3xl border border-slate-100 shadow-sm flex items-stretch overflow-hidden transition-all group cursor-pointer ${
                           task.completed ? '' : 'hover:border-rose-200 hover:shadow-md'
                         }`}
                       >
                         {/* Priority Indicator Bar */}
-                        <div className={`w-2.5 transition-all duration-500 ${
+                        <div className={`w-1.5 md:w-2.5 transition-all duration-500 ${
                           task.priority === 'high' ? 'bg-rose-500 shadow-[4px_0_15px_rgba(244,63,94,0.4)]' :
                           task.priority === 'medium' ? 'bg-amber-500 shadow-[4px_0_15px_rgba(245,158,11,0.4)]' :
                           'bg-emerald-500 shadow-[4px_0_15px_rgba(16,185,129,0.4)]'
                         }`} />
 
-                        <div className="flex-1 p-6 flex items-start justify-between">
-                          <div className="flex items-start gap-4 flex-1">
+                        <div className="flex-1 p-4 md:p-6 flex items-start justify-between gap-2">
+                          <div className="flex items-start gap-3 md:gap-4 flex-1 min-w-0">
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
                                 toggleTask(task);
                               }} 
-                              className={`mt-1 transition-all duration-300 hover:scale-110 active:scale-95 ${task.completed ? 'text-emerald-500' : 'text-slate-300 hover:text-rose-500'}`}
+                              className={`mt-1 transition-all duration-300 hover:scale-110 active:scale-95 flex-shrink-0 ${task.completed ? 'text-emerald-500' : 'text-slate-300 hover:text-rose-500'}`}
                             >
-                              {task.completed ? <CheckCircle2 className="w-7 h-7" /> : <Circle className="w-7 h-7" />}
+                              {task.completed ? <CheckCircle2 className="w-6 h-6 md:w-7 md:h-7" /> : <Circle className="w-6 h-6 md:w-7 md:h-7" />}
                             </button>
-                            <div className="flex-1 space-y-1">
+                            <div className="flex-1 space-y-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <h3 className={`font-bold text-slate-800 text-lg transition-all ${task.completed ? 'line-through decoration-slate-400 text-slate-400' : ''}`}>
+                                <h3 className={`font-bold text-slate-800 text-sm md:text-lg transition-all truncate ${task.completed ? 'line-through decoration-slate-400 text-slate-400' : ''}`}>
                                   {task.title}
                                 </h3>
                                 {task.category && (
-                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[8px] md:text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
                                     {task.category}
                                   </span>
                                 )}
                               </div>
                               
                               {task.description && !task.completed && (
-                                <p className="text-slate-500 text-sm leading-relaxed line-clamp-1">{task.description}</p>
+                                <p className="text-slate-500 text-xs md:text-sm leading-relaxed line-clamp-1">{task.description}</p>
                               )}
 
                               {task.dueDate && (
-                                <div className="flex items-center gap-3 mt-2">
-                                  <div className={`flex items-center gap-1.5 text-xs font-medium ${
+                                <div className="flex items-center gap-3 mt-1 md:mt-2">
+                                  <div className={`flex items-center gap-1.5 text-[10px] md:text-xs font-medium ${
                                     !task.completed && new Date(task.dueDate) < new Date() ? 'text-rose-500' : 'text-slate-400'
                                   }`}>
-                                    <Calendar className="w-3.5 h-3.5" />
-                                    {format(new Date(task.dueDate), "d 'de' MMMM, yyyy", { locale: es })}
+                                    <Calendar className="w-3 h-3 md:w-3.5 md:h-3.5" />
+                                    {format(new Date(task.dueDate), "d 'de' MMM", { locale: es })}
                                   </div>
                                 </div>
                               )}
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <div className="p-2 text-slate-300 group-hover:text-rose-500 transition-colors">
-                              <Info className="w-5 h-5" />
+                          <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
+                            <div className="p-1.5 md:p-2 text-slate-300 group-hover:text-rose-500 transition-colors">
+                              <Info className="w-4 h-4 md:w-5 md:h-5" />
                             </div>
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
                                 deleteTask(task.id);
                               }}
-                              className="p-2 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                              className="p-1.5 md:p-2 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all md:opacity-0 md:group-hover:opacity-100"
                             >
-                              <Trash2 className="w-5 h-5" />
+                              <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
                             </button>
                           </div>
                         </div>
@@ -661,11 +661,11 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
             exit={{ opacity: 0, x: -20 }}
             className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden"
           >
-            <div className="p-6 border-bottom border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <h3 className="text-xl font-serif font-bold text-slate-800 capitalize">
+            <div className="p-4 md:p-6 border-bottom border-slate-100 flex flex-col sm:flex-row items-center justify-between bg-slate-50/50 gap-4">
+              <h3 className="text-lg md:text-xl font-serif font-bold text-slate-800 capitalize">
                 {format(currentMonth, 'MMMM yyyy', { locale: es })}
               </h3>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
                 <button 
                   onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}
                   className="p-2 hover:bg-white rounded-xl transition-all text-slate-400 hover:text-rose-500 border border-transparent hover:border-slate-100"
@@ -688,7 +688,7 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
             </div>
             
             <div className="grid grid-cols-7 bg-slate-50/30 border-b border-slate-100">
-              {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(day => (
+              {['D', 'L', 'M', 'X', 'J', 'V', 'S'].map(day => (
                 <div key={day} className="py-3 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                   {day}
                 </div>
@@ -703,18 +703,18 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
               <motion.div 
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="p-6 border-t border-slate-100 bg-slate-50/30"
+                className="p-4 md:p-6 border-t border-slate-100 bg-slate-50/30"
               >
-                <div className="flex items-center justify-between mb-6">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-rose-500">
+                    <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-rose-500 flex-shrink-0">
                       <Calendar className="w-5 h-5" />
                     </div>
                     <div>
-                      <h4 className="font-serif font-bold text-slate-800">
+                      <h4 className="font-serif font-bold text-slate-800 text-sm md:text-base">
                         Tareas para el {format(new Date(selectedDate + 'T12:00:00'), "d 'de' MMMM", { locale: es })}
                       </h4>
-                      <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">
+                      <p className="text-[10px] md:text-xs text-slate-400 font-bold uppercase tracking-widest">
                         {tasks.filter(t => t.dueDate === selectedDate).length} tareas programadas
                       </p>
                     </div>
@@ -724,7 +724,7 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                       setDueDate(selectedDate);
                       setShowForm(true);
                     }}
-                    className="text-rose-500 hover:text-rose-600 text-sm font-bold flex items-center gap-1 transition-colors"
+                    className="text-rose-500 hover:text-rose-600 text-sm font-bold flex items-center gap-1 transition-colors w-full sm:w-auto justify-center sm:justify-start"
                   >
                     <Plus className="w-4 h-4" />
                     Agregar Tarea
@@ -801,92 +801,92 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white w-full max-w-2xl rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              className="bg-white w-full max-w-2xl rounded-[32px] md:rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="p-8 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
+              <div className="p-6 md:p-8 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
                 <div className="space-y-2">
-                  <div className="flex items-center gap-3">
-                    <span className="px-3 py-1 bg-rose-100 text-rose-600 rounded-full text-[10px] font-bold uppercase tracking-widest">
+                  <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+                    <span className="px-2 md:px-3 py-1 bg-rose-100 text-rose-600 rounded-full text-[8px] md:text-[10px] font-bold uppercase tracking-widest">
                       {selectedTask.category}
                     </span>
-                    <span className="px-3 py-1 bg-slate-200 text-slate-600 rounded-full text-[10px] font-bold uppercase tracking-widest">
+                    <span className="px-2 md:px-3 py-1 bg-slate-200 text-slate-600 rounded-full text-[8px] md:text-[10px] font-bold uppercase tracking-widest">
                       {selectedTask.timeframe}
                     </span>
                   </div>
-                  <h3 className="text-3xl font-serif font-bold text-slate-800">{selectedTask.title}</h3>
+                  <h3 className="text-xl md:text-3xl font-serif font-bold text-slate-800 leading-tight">{selectedTask.title}</h3>
                 </div>
                 <button 
                   onClick={() => setSelectedTask(null)}
-                  className="p-2 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-rose-500 shadow-sm"
+                  className="p-1.5 md:p-2 hover:bg-white rounded-xl md:rounded-2xl transition-all text-slate-400 hover:text-rose-500 shadow-sm flex-shrink-0"
                 >
-                  <X className="w-6 h-6" />
+                  <X className="w-5 h-5 md:w-6 md:h-6" />
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-8 space-y-8">
-                <div className="space-y-4">
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Descripción</h4>
-                  <p className="text-slate-600 leading-relaxed text-lg">
+              <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6 md:space-y-8">
+                <div className="space-y-3 md:space-y-4">
+                  <h4 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest">Descripción</h4>
+                  <p className="text-slate-600 leading-relaxed text-base md:text-lg">
                     {selectedTask.description || 'No hay descripción disponible para esta tarea.'}
                   </p>
                 </div>
 
                 {/* Action Buttons based on category */}
-                <div className="space-y-4">
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Acciones Recomendadas</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-3 md:space-y-4">
+                  <h4 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest">Acciones Recomendadas</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
                     {selectedTask.category === 'Banquete' && (
-                      <button className="flex items-center justify-between p-4 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 font-bold hover:bg-rose-100 transition-all">
+                      <button className="flex items-center justify-between p-3 md:p-4 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 font-bold hover:bg-rose-100 transition-all text-sm md:text-base">
                         <span>Buscar Lugares para boda</span>
-                        <ExternalLink className="w-5 h-5" />
+                        <ExternalLink className="w-4 h-4 md:w-5 md:h-5" />
                       </button>
                     )}
                     {selectedTask.category === 'Planificación' && (
-                      <button className="flex items-center justify-between p-4 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 font-bold hover:bg-rose-100 transition-all">
+                      <button className="flex items-center justify-between p-3 md:p-4 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 font-bold hover:bg-rose-100 transition-all text-sm md:text-base">
                         <span>Añadir un gasto relacionado</span>
-                        <Plus className="w-5 h-5" />
+                        <Plus className="w-4 h-4 md:w-5 md:h-5" />
                       </button>
                     )}
-                    <button className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 text-slate-600 font-bold hover:bg-slate-100 transition-all">
+                    <button className="flex items-center justify-between p-3 md:p-4 bg-slate-50 rounded-2xl border border-slate-100 text-slate-600 font-bold hover:bg-slate-100 transition-all text-sm md:text-base">
                       <span>Añadir nota...</span>
-                      <Plus className="w-5 h-5" />
+                      <Plus className="w-4 h-4 md:w-5 md:h-5" />
                     </button>
                   </div>
                 </div>
 
                 {/* Recommended for you section (simulated) */}
-                <div className="space-y-4">
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Recomendado para ti</h4>
-                  <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-3 md:space-y-4">
+                  <h4 className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-widest">Recomendado para ti</h4>
+                  <div className="grid grid-cols-2 gap-3 md:gap-4">
                     <div className="aspect-video bg-slate-100 rounded-2xl overflow-hidden relative group cursor-pointer">
                       <img src="https://picsum.photos/seed/wedding1/400/225" alt="Hotel" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-3">
-                        <p className="text-white text-xs font-bold">Hoteles en tu zona</p>
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-2 md:p-3">
+                        <p className="text-white text-[10px] md:text-xs font-bold">Hoteles en tu zona</p>
                       </div>
                     </div>
                     <div className="aspect-video bg-slate-100 rounded-2xl overflow-hidden relative group cursor-pointer">
                       <img src="https://picsum.photos/seed/wedding2/400/225" alt="Venue" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-3">
-                        <p className="text-white text-xs font-bold">Salones destacados</p>
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-2 md:p-3">
+                        <p className="text-white text-[10px] md:text-xs font-bold">Salones destacados</p>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="p-8 bg-slate-50 border-t border-slate-100 flex gap-4">
+              <div className="p-6 md:p-8 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row gap-3 md:gap-4">
                 <button 
                   onClick={() => {
                     toggleTask(selectedTask);
                     setSelectedTask(null);
                   }}
-                  className={`flex-1 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
+                  className={`flex-1 py-3 md:py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg text-sm md:text-base ${
                     selectedTask.completed 
                       ? 'bg-slate-200 text-slate-500' 
                       : 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-emerald-100'
                   }`}
                 >
-                  <CheckCircle2 className="w-5 h-5" />
+                  <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5" />
                   {selectedTask.completed ? 'Marcar como pendiente' : 'Completar Tarea'}
                 </button>
                 <button 
@@ -894,9 +894,10 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                     deleteTask(selectedTask.id);
                     setSelectedTask(null);
                   }}
-                  className="px-6 py-4 bg-white text-rose-500 border border-rose-100 rounded-2xl font-bold hover:bg-rose-50 transition-all"
+                  className="px-6 py-3 md:py-4 bg-white text-rose-500 border border-rose-100 rounded-2xl font-bold hover:bg-rose-50 transition-all text-sm md:text-base flex items-center justify-center gap-2"
                 >
-                  <Trash2 className="w-5 h-5" />
+                  <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
+                  <span className="sm:hidden">Eliminar</span>
                 </button>
               </div>
             </motion.div>

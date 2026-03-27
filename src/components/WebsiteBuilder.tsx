@@ -179,7 +179,8 @@ export const WebsiteBuilder: React.FC<WebsiteBuilderProps> = ({ wedding }) => {
       details: type === 'event-details' ? {
         food: '',
         music: '',
-        dressCode: ''
+        dressCode: '',
+        photobooth: ''
       } : undefined
     };
     setWebsite({ ...website, sections: [...website.sections, newSection] });
@@ -414,14 +415,14 @@ export const WebsiteBuilder: React.FC<WebsiteBuilderProps> = ({ wedding }) => {
                         </div>
 
                         {section.type === 'event-details' && (
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
                             <div className="space-y-1">
                               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
                                 <Utensils className="w-3 h-3" /> Comida
                               </label>
                               <input 
                                 type="text"
-                                placeholder="Ej: Menú gourmet..."
+                                placeholder="Ej: Cena Gourmet..."
                                 value={section.details?.food || ''}
                                 onChange={(e) => {
                                   const newSections = website?.sections.map(s => 
@@ -438,7 +439,7 @@ export const WebsiteBuilder: React.FC<WebsiteBuilderProps> = ({ wedding }) => {
                               </label>
                               <input 
                                 type="text"
-                                placeholder="Ej: Banda en vivo..."
+                                placeholder="Ej: Música en Vivo..."
                                 value={section.details?.music || ''}
                                 onChange={(e) => {
                                   const newSections = website?.sections.map(s => 
@@ -451,11 +452,28 @@ export const WebsiteBuilder: React.FC<WebsiteBuilderProps> = ({ wedding }) => {
                             </div>
                             <div className="space-y-1">
                               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                                <ImageIcon className="w-3 h-3" /> Fotos
+                              </label>
+                              <input 
+                                type="text"
+                                placeholder="Ej: Photobooth..."
+                                value={section.details?.photobooth || ''}
+                                onChange={(e) => {
+                                  const newSections = website?.sections.map(s => 
+                                    s.id === section.id ? { ...s, details: { ...s.details, photobooth: e.target.value } } : s
+                                  );
+                                  setWebsite(prev => prev ? { ...prev, sections: newSections || [] } : null);
+                                }}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-rose-500 transition-all"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
                                 <Users className="w-3 h-3" /> Vestimenta
                               </label>
                               <input 
                                 type="text"
-                                placeholder="Ej: Formal..."
+                                placeholder="Ej: Dress Code..."
                                 value={section.details?.dressCode || ''}
                                 onChange={(e) => {
                                   const newSections = website?.sections.map(s => 

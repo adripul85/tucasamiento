@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Masonry from 'react-masonry-css';
-import { Search, MapPin, Star, Phone, Globe, Heart, Trash2, Loader2, Filter, ChevronDown, X, ChevronLeft, ChevronRight, LayoutGrid, List, LayoutList, Columns, ExternalLink, Clock, Map as MapIcon } from 'lucide-react';
+import { Search, MapPin, Star, Phone, Globe, Heart, Trash2, Loader2, Filter, ChevronDown, X, ChevronLeft, ChevronRight, LayoutGrid, List, LayoutList, Columns, ExternalLink, Clock, Map as MapIcon, Wallet, CheckCircle2 } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, query } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
@@ -37,6 +37,7 @@ interface Vendor {
   phone?: string;
   website?: string;
   rating?: number;
+  userRating?: number;
   priceRange?: number; // 1-4
   isAvailable?: boolean;
   openingHours?: string;
@@ -50,6 +51,7 @@ interface FavoriteVendor {
   category: string;
   address?: string;
   rating?: number;
+  userRating?: number;
   photo?: string;
   phone?: string;
   website?: string;
@@ -60,7 +62,94 @@ interface FavoriteVendor {
   reviews?: { author: string; comment: string; rating: number }[];
 }
 
-export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => {
+const StarRating = ({ rating, onRate, size = "w-4 h-4", interactive = false }: { rating: number; onRate?: (rating: number) => void; size?: string; interactive?: boolean }) => {
+  const [hover, setHover] = useState(0);
+
+  return (
+    <div className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <button
+          key={star}
+          type="button"
+          disabled={!interactive}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onRate) onRate(star);
+          }}
+          onMouseEnter={() => interactive && setHover(star)}
+          onMouseLeave={() => interactive && setHover(0)}
+          className={`${interactive ? 'cursor-pointer transition-transform hover:scale-110' : 'cursor-default'}`}
+        >
+          <Star
+            className={`${size} ${
+              star <= (hover || rating)
+                ? 'fill-amber-400 text-amber-400'
+                : 'text-slate-200'
+            }`}
+          />
+        </button>
+      ))}
+    </div>
+  );
+};
+
+const REAL_VENDORS: Vendor[] = [
+  {
+    id: 'cas-1',
+    name: 'Tienda de Eventos',
+    lat: -34.6037,
+    lon: -58.3816,
+    address: 'Buenos Aires, Argentina',
+    category: 'Alquiler de livings',
+    phone: '+54 11 1234-5678',
+    website: 'https://www.casamientos.com.ar/alquiler-living/tienda-de-eventos--e140629',
+    rating: 4.9,
+    priceRange: 3,
+    isAvailable: true,
+    openingHours: 'Lun-Sáb: 10:00-19:00',
+    reviews: [
+      { author: 'Lucía M.', comment: 'Excelente calidad de los livings, quedaron perfectos.', rating: 5 },
+      { author: 'Marcos R.', comment: 'Muy puntuales con la entrega.', rating: 5 }
+    ]
+  },
+  {
+    id: 'cas-2',
+    name: 'Tico Cid',
+    lat: -34.5837,
+    lon: -58.4016,
+    address: 'Palermo, Buenos Aires',
+    category: 'Fotógrafos',
+    phone: '+54 11 8765-4321',
+    website: 'https://www.casamientos.com.ar/fotografos/tico-cid--e111250',
+    rating: 4.8,
+    priceRange: 4,
+    isAvailable: true,
+    openingHours: 'Lun-Vie: 09:00-18:00',
+    reviews: [
+      { author: 'Sofía G.', comment: 'Las fotos son increíbles, capturó cada momento.', rating: 5 },
+      { author: 'Diego F.', comment: 'Gran profesionalismo.', rating: 4 }
+    ]
+  },
+  {
+    id: 'cas-3',
+    name: 'Maisto Leiva Dúo',
+    lat: -34.6137,
+    lon: -58.3716,
+    address: 'San Telmo, Buenos Aires',
+    category: 'Música y DJ',
+    phone: '+54 11 5555-4444',
+    website: 'https://www.casamientos.com.ar/musica-bodas/maisto-leiva-duo--e108906',
+    rating: 4.7,
+    priceRange: 2,
+    isAvailable: true,
+    openingHours: 'Eventos: 24hs',
+    reviews: [
+      { author: 'Carla P.', comment: 'La música fue lo mejor de la fiesta.', rating: 5 }
+    ]
+  }
+];
+
+export const VendorSearch: React.FC<{ weddingId: string; onSelectVendor?: (vendor: Vendor) => void }> = ({ weddingId, onSelectVendor }) => {
   const [vendorType, setVendorType] = useState('Salones de eventos');
   const [currentLocation, setCurrentLocation] = useState<[number, number]>([-34.6037, -58.3816]);
   const [locationName, setLocationName] = useState('Buenos Aires, Argentina');
@@ -77,6 +166,22 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
   const [minRating, setMinRating] = useState(0);
   const [maxPrice, setMaxPrice] = useState(4);
   const [onlyAvailable, setOnlyAvailable] = useState(false);
+  const [addingToBudget, setAddingToBudget] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const CATEGORY_MAPPING: Record<string, string> = {
+    'Catering': 'Banquete',
+    'Fotografía': 'Foto y Vídeo',
+    'Música': 'Música',
+    'Lugar': 'Banquete',
+    'Vestido': 'Novia y Complementos',
+    'Decoración': 'Flores y Decoración',
+    'Flores': 'Flores y Decoración',
+    'Transporte': 'Transporte',
+    'Joyería': 'Joyería',
+    'Belleza': 'Belleza y Salud',
+    'Invitaciones': 'Invitaciones',
+  };
   const [expandedVendorId, setExpandedVendorId] = useState<string | null>(null);
   const carouselRef = useRef<HTMLDivElement>(null);
 
@@ -93,7 +198,7 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
   const types = ['Salones de eventos', 'Fotógrafos', 'Catering', 'Vestidos de novia', 'Florerías', 'Música y DJ'];
 
   // Overpass API category mapping
-  const getOverpassQuery = (type: string, lat: number, lon: number) => {
+  const getOverpassQuery = (type: string, lat: number, lon: number, timeout = 60) => {
     let filter = '';
     const radius = 5000; // 5km
     switch (type) {
@@ -119,13 +224,20 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
         filter = '["amenity"="events_venue"]';
     }
     // nwr = node, way, relation. Use 'out center' to get coordinates for polygons.
-    return `[out:json][timeout:25];nwr${filter}(around:${radius},${lat},${lon});out center;`;
+    return `[out:json][timeout:${timeout}];nwr${filter}(around:${radius},${lat},${lon});out center;`;
   };
 
   const lastFetchRef = useRef<{ lat: number; lon: number; type: string; timestamp: number } | null>(null);
   const cacheRef = useRef<Record<string, { data: Vendor[]; timestamp: number }>>({});
 
-  const fetchVendors = useCallback(async (lat: number, lon: number, type: string, retryCount = 0) => {
+  const OVERPASS_MIRRORS = [
+    'https://overpass-api.de/api/interpreter',
+    'https://lz4.overpass-api.de/api/interpreter',
+    'https://z.overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter'
+  ];
+
+  const fetchVendors = useCallback(async (lat: number, lon: number, type: string, retryCount = 0, mirrorIndex = 0) => {
     const cacheKey = `${lat.toFixed(4)}-${lon.toFixed(4)}-${type}`;
     const now = Date.now();
 
@@ -149,12 +261,18 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
 
     try {
       const query = getOverpassQuery(type, lat, lon);
-      const response = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
+      const baseUrl = OVERPASS_MIRRORS[mirrorIndex % OVERPASS_MIRRORS.length];
+      const response = await fetch(`${baseUrl}?data=${encodeURIComponent(query)}`);
       
-      if (response.status === 429 && retryCount < 2) {
-        const delay = Math.pow(2, retryCount) * 2000;
-        console.warn(`Overpass API rate limited. Retrying in ${delay}ms...`);
-        setTimeout(() => fetchVendors(lat, lon, type, retryCount + 1), delay);
+      if ((response.status === 429 || response.status === 504 || response.status === 503) && retryCount < 3) {
+        const isRateLimit = response.status === 429;
+        const delay = isRateLimit ? Math.pow(2, retryCount) * 2000 : 1000;
+        
+        console.warn(`Overpass API ${response.status} error at ${baseUrl}. Retrying with ${isRateLimit ? 'delay' : 'next mirror'}...`);
+        
+        setTimeout(() => {
+          fetchVendors(lat, lon, type, retryCount + 1, isRateLimit ? mirrorIndex : mirrorIndex + 1);
+        }, delay);
         return;
       }
 
@@ -197,8 +315,9 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
       })).filter((v: Vendor) => v.lat !== 0);
       
       // Update cache
-      cacheRef.current[cacheKey] = { data: mappedVendors, timestamp: now };
-      setVendors(mappedVendors);
+      const combinedVendors = [...REAL_VENDORS.filter(rv => rv.category === type), ...mappedVendors];
+      cacheRef.current[cacheKey] = { data: combinedVendors, timestamp: now };
+      setVendors(combinedVendors);
     } catch (error) {
       console.error('Error fetching vendors:', error);
       // If we have cached data even if expired, use it as fallback
@@ -291,6 +410,67 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
   };
 
   const isFavorite = (vendorId: string) => favorites.some(f => f.vendorId === vendorId);
+  const getFavorite = (vendorId: string) => favorites.find(f => f.vendorId === vendorId);
+
+  const handleRateVendor = async (vendor: Vendor, rating: number) => {
+    const existing = getFavorite(vendor.id);
+    if (existing) {
+      try {
+        const { updateDoc } = await import('firebase/firestore');
+        await updateDoc(doc(db, 'weddings', weddingId, 'favoriteVendors', existing.id), {
+          userRating: rating
+        });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `weddings/${weddingId}/favoriteVendors/${existing.id}`);
+      }
+    } else {
+      // If not favorite, add it as favorite with the rating
+      try {
+        await addDoc(collection(db, 'weddings', weddingId, 'favoriteVendors'), {
+          weddingId,
+          vendorId: vendor.id,
+          name: vendor.name,
+          category: vendor.category,
+          address: vendor.address || null,
+          rating: vendor.rating || null,
+          userRating: rating,
+          lat: vendor.lat,
+          lon: vendor.lon,
+          photo: null,
+          phone: vendor.phone || null,
+          website: vendor.website || null,
+          openingHours: vendor.openingHours || null,
+          reviews: vendor.reviews || null
+        });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `weddings/${weddingId}/favoriteVendors`);
+      }
+    }
+  };
+
+  const addToBudget = async (vendor: Vendor | FavoriteVendor) => {
+    setAddingToBudget(vendor.id);
+    try {
+      const budgetCategory = CATEGORY_MAPPING[vendor.category] || 'Otros';
+      const vendorId = 'vendorId' in vendor ? vendor.vendorId : vendor.id;
+      
+      await addDoc(collection(db, `weddings/${weddingId}/budgetItems`), {
+        weddingId,
+        name: vendor.name,
+        category: budgetCategory,
+        estimated: 0,
+        paid: 0,
+        vendorId: vendorId
+      });
+
+      setSuccessMessage(`¡${vendor.name} añadido al presupuesto!`);
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `weddings/${weddingId}/budgetItems`);
+    } finally {
+      setAddingToBudget(null);
+    }
+  };
 
   const breakpointColumnsObj = {
     default: 3,
@@ -308,6 +488,19 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
 
   return (
     <div className="space-y-6">
+      <AnimatePresence>
+        {successMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] bg-emerald-50 text-emerald-600 p-4 rounded-2xl flex items-center gap-3 border border-emerald-100 shadow-xl"
+          >
+            <CheckCircle2 className="w-5 h-5" />
+            <span className="font-bold text-sm">{successMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-3xl font-serif font-bold text-slate-800">Buscar Proveedores</h2>
@@ -569,7 +762,13 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ duration: 0.5, delay: idx * 0.1 }}
-                      onClick={() => setExpandedVendorId(expandedVendorId === fav.id ? null : fav.id)}
+                      onClick={() => {
+                        if (onSelectVendor) {
+                          onSelectVendor(fav);
+                        } else {
+                          setExpandedVendorId(expandedVendorId === fav.id ? null : fav.id);
+                        }
+                      }}
                       whileHover={{ y: -12 }}
                       className={`mb-8 bg-white rounded-[40px] overflow-hidden border border-slate-100 shadow-sm group hover:shadow-[0_32px_64px_-16px_rgba(225,29,72,0.15)] transition-all duration-700 relative cursor-pointer ${
                         fav.isExceedingBudget ? 'ring-2 ring-rose-500/50' : ''
@@ -616,17 +815,39 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                             <h4 className="text-white font-serif font-bold text-2xl leading-tight drop-shadow-lg group-hover:text-rose-200 transition-colors">
                               {fav.name}
                             </h4>
-                            <div className="flex items-center gap-4">
-                              <div className="flex items-center gap-1.5 text-amber-400 text-sm font-bold bg-black/20 backdrop-blur-md px-2.5 py-1 rounded-lg">
-                                <Star className="w-4 h-4 fill-amber-400" />
-                                <span>{fav.rating || '4.5'}</span>
-                              </div>
-                              {fav.address && (
-                                <div className="flex items-center gap-1.5 text-white/80 text-[11px] font-medium truncate max-w-[180px]">
-                                  <MapPin className="w-3.5 h-3.5 text-rose-400" />
-                                  <span className="truncate">{fav.address}</span>
+                            <div className="flex flex-col gap-3">
+                              <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-1.5 text-amber-400 text-sm font-bold bg-black/20 backdrop-blur-md px-2.5 py-1 rounded-lg">
+                                  <Star className="w-4 h-4 fill-amber-400" />
+                                  <span>{fav.rating || '4.5'}</span>
                                 </div>
-                              )}
+                                {fav.address && (
+                                  <div className="flex items-center gap-1.5 text-white/80 text-[11px] font-medium truncate max-w-[180px]">
+                                    <MapPin className="w-3.5 h-3.5 text-rose-400" />
+                                    <span className="truncate">{fav.address}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-white/60">Tu Calificación:</p>
+                                <StarRating 
+                                  rating={fav.userRating || 0} 
+                                  interactive 
+                                  onRate={(r) => handleRateVendor(fav as any, r)}
+                                  size="w-4 h-4"
+                                />
+                              </div>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  addToBudget(fav as any);
+                                }}
+                                disabled={addingToBudget === fav.id}
+                                className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-rose-200 hover:text-white transition-colors mt-2"
+                              >
+                                <Wallet className="w-3.5 h-3.5" />
+                                {addingToBudget === fav.id ? 'Añadiendo...' : 'Añadir al Presupuesto'}
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -725,7 +946,13 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                     <motion.div 
                       layout
                       key={fav.id}
-                      onClick={() => setExpandedVendorId(expandedVendorId === fav.id ? null : fav.id)}
+                      onClick={() => {
+                        if (onSelectVendor) {
+                          onSelectVendor(fav);
+                        } else {
+                          setExpandedVendorId(expandedVendorId === fav.id ? null : fav.id);
+                        }
+                      }}
                       className="flex-shrink-0 w-[300px] sm:w-[400px] snap-center p-1"
                     >
                       <div className={`bg-white rounded-[40px] overflow-hidden border border-slate-100 shadow-lg hover:shadow-2xl hover:shadow-rose-100 transition-all group/card relative cursor-pointer ${
@@ -760,16 +987,38 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                           </div>
                         </div>
                         <div className="p-8 space-y-6">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2 text-amber-500 font-bold">
-                              <Star className="w-5 h-5 fill-amber-500" />
-                              <span>{fav.rating || '4.5'}</span>
+                          <div className="flex flex-col gap-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2 text-amber-500 font-bold">
+                                <Star className="w-5 h-5 fill-amber-500" />
+                                <span>{fav.rating || '4.5'}</span>
+                              </div>
+                              {fav.isExceedingBudget && (
+                                <span className="text-[10px] font-bold text-rose-500 uppercase tracking-widest bg-rose-50 px-2 py-1 rounded-lg">
+                                  Excede Presupuesto
+                                </span>
+                              )}
                             </div>
-                            {fav.isExceedingBudget && (
-                              <span className="text-[10px] font-bold text-rose-500 uppercase tracking-widest bg-rose-50 px-2 py-1 rounded-lg">
-                                Excede Presupuesto
-                              </span>
-                            )}
+                            <div className="flex items-center gap-2">
+                              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tu Calificación:</p>
+                              <StarRating 
+                                rating={fav.userRating || 0} 
+                                interactive 
+                                onRate={(r) => handleRateVendor(fav as any, r)}
+                                size="w-4 h-4"
+                              />
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addToBudget(fav as any);
+                              }}
+                              disabled={addingToBudget === fav.id}
+                              className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-rose-500 hover:text-rose-600 transition-colors mt-2"
+                            >
+                              <Wallet className="w-3.5 h-3.5" />
+                              {addingToBudget === fav.id ? 'Añadiendo...' : 'Añadir al Presupuesto'}
+                            </button>
                           </div>
                           
                           <motion.div 
@@ -829,8 +1078,20 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                               </div>
                             )}
 
-                            <div className="flex gap-4 pt-2">
-                              {fav.phone && (
+                            <div className="flex flex-col gap-4 pt-2">
+                              {onSelectVendor && (
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onSelectVendor(fav);
+                                  }}
+                                  className="w-full flex items-center justify-center gap-2 py-4 bg-rose-500 text-white rounded-2xl text-sm font-bold shadow-lg shadow-rose-200 hover:bg-rose-600 transition-all"
+                                >
+                                  Ver Perfil Completo
+                                </button>
+                              )}
+                              <div className="flex gap-4">
+                                {fav.phone && (
                                 <a 
                                   href={`tel:${fav.phone}`} 
                                   onClick={(e) => e.stopPropagation()}
@@ -853,7 +1114,8 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                                 </a>
                               )}
                             </div>
-                          </motion.div>
+                          </div>
+                        </motion.div>
 
                           {!expandedVendorId || expandedVendorId !== fav.id ? (
                             <div className="flex items-center gap-2 text-slate-400 text-xs font-medium">
@@ -894,7 +1156,13 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                   <motion.div 
                     layout
                     key={fav.id}
-                    onClick={() => setExpandedVendorId(expandedVendorId === fav.id ? null : fav.id)}
+                    onClick={() => {
+                      if (onSelectVendor) {
+                        onSelectVendor(fav);
+                      } else {
+                        setExpandedVendorId(expandedVendorId === fav.id ? null : fav.id);
+                      }
+                    }}
                     className="bg-white rounded-[24px] overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl transition-all cursor-pointer group"
                   >
                     <div className="flex flex-col sm:flex-row">
@@ -1001,6 +1269,17 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                                   </div>
                                 )}
                                 <div className="flex gap-3 items-end">
+                                  {onSelectVendor && (
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onSelectVendor(fav);
+                                      }}
+                                      className="flex-1 py-3 bg-rose-500 text-white rounded-xl text-center text-xs font-bold hover:bg-rose-600 transition-all shadow-lg shadow-rose-200"
+                                    >
+                                      Ver Perfil
+                                    </button>
+                                  )}
                                   {fav.phone && (
                                     <a 
                                       href={`tel:${fav.phone}`}
@@ -1058,10 +1337,16 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                                 <span>{fav.rating || '4.5'}</span>
                               </div>
                               <button 
-                                onClick={() => setExpandedVendorId(fav.id)}
+                                onClick={() => {
+                                  if (onSelectVendor) {
+                                    onSelectVendor(fav);
+                                  } else {
+                                    setExpandedVendorId(fav.id);
+                                  }
+                                }}
                                 className="w-full py-2 bg-rose-500 text-white text-[10px] font-bold uppercase tracking-widest rounded-lg"
                               >
-                                Ver Detalles
+                                Ver Perfil
                               </button>
                             </div>
                           </Popup>
@@ -1154,19 +1439,29 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                                 </div>
                               )}
                               
-                              <div className="flex gap-4">
-                                {fav.phone && (
-                                  <a href={`tel:${fav.phone}`} className="flex-1 flex items-center justify-center gap-2 py-4 bg-rose-500 text-white rounded-2xl text-sm font-bold shadow-lg shadow-rose-200">
-                                    <Phone className="w-4 h-4" />
-                                    Llamar
-                                  </a>
+                              <div className="flex flex-col gap-4">
+                                {onSelectVendor && (
+                                  <button 
+                                    onClick={() => onSelectVendor(fav)}
+                                    className="w-full flex items-center justify-center gap-2 py-4 bg-rose-500 text-white rounded-2xl text-sm font-bold shadow-lg shadow-rose-200 hover:bg-rose-600 transition-all"
+                                  >
+                                    Ver Perfil Completo
+                                  </button>
                                 )}
-                                {fav.website && (
-                                  <a href={fav.website} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 py-4 bg-white border border-slate-200 text-slate-700 rounded-2xl text-sm font-bold">
-                                    <Globe className="w-4 h-4" />
-                                    Sitio Web
-                                  </a>
-                                )}
+                                <div className="flex gap-4">
+                                  {fav.phone && (
+                                    <a href={`tel:${fav.phone}`} className="flex-1 flex items-center justify-center gap-2 py-4 bg-white border border-slate-200 text-slate-700 rounded-2xl text-sm font-bold">
+                                      <Phone className="w-4 h-4" />
+                                      Llamar
+                                    </a>
+                                  )}
+                                  {fav.website && (
+                                    <a href={fav.website} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 py-4 bg-white border border-slate-200 text-slate-700 rounded-2xl text-sm font-bold">
+                                      <Globe className="w-4 h-4" />
+                                      Sitio Web
+                                    </a>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -1255,7 +1550,13 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                     <motion.div 
                       layout
                       key={vendor.id}
-                      onClick={() => setExpandedVendorId(expandedVendorId === vendor.id ? null : vendor.id)}
+                      onClick={() => {
+                        if (onSelectVendor) {
+                          onSelectVendor(vendor);
+                        } else {
+                          setExpandedVendorId(expandedVendorId === vendor.id ? null : vendor.id);
+                        }
+                      }}
                       className="bg-white rounded-[32px] overflow-hidden border border-slate-100 shadow-sm group hover:shadow-2xl hover:shadow-rose-100/50 hover:-translate-y-2 transition-all duration-500 relative cursor-pointer"
                     >
                       <div className="h-60 relative overflow-hidden">
@@ -1292,14 +1593,36 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                         <div className="flex items-start justify-between gap-4">
                           <div>
                             <h3 className="text-xl font-serif font-bold text-slate-800 leading-tight group-hover:text-rose-600 transition-colors">{vendor.name}</h3>
-                            <div className="flex items-center gap-3 mt-2">
-                              <div className="flex items-center gap-1.5 bg-amber-50 px-2 py-0.5 rounded-lg text-amber-600 text-xs font-bold border border-amber-100 w-fit">
-                                <Star className="w-3 h-3 fill-amber-500" />
-                                <span>{vendor.rating || '4.5'}</span>
+                            <div className="flex flex-col gap-2 mt-2">
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-1.5 bg-amber-50 px-2 py-0.5 rounded-lg text-amber-600 text-xs font-bold border border-amber-100 w-fit">
+                                  <Star className="w-3 h-3 fill-amber-500" />
+                                  <span>{vendor.rating || '4.5'}</span>
+                                </div>
+                                <div className="text-slate-400 text-xs font-bold tracking-widest">
+                                  {'$'.repeat(vendor.priceRange || 1)}
+                                </div>
                               </div>
-                              <div className="text-slate-400 text-xs font-bold tracking-widest">
-                                {'$'.repeat(vendor.priceRange || 1)}
+                              <div className="flex items-center gap-2">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Tu Calificación:</p>
+                                <StarRating 
+                                  rating={getFavorite(vendor.id)?.userRating || 0} 
+                                  interactive 
+                                  onRate={(r) => handleRateVendor(vendor, r)}
+                                  size="w-3.5 h-3.5"
+                                />
                               </div>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  addToBudget(vendor);
+                                }}
+                                disabled={addingToBudget === vendor.id}
+                                className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-rose-500 hover:text-rose-600 transition-colors mt-1"
+                              >
+                                <Wallet className="w-3 h-3" />
+                                {addingToBudget === vendor.id ? 'Añadiendo...' : 'Añadir al Presupuesto'}
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -1351,8 +1674,20 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                               </div>
                             )}
                             
-                            <div className="grid grid-cols-2 gap-3">
-                              {vendor.phone && (
+                            <div className="flex flex-col gap-3">
+                              {onSelectVendor && (
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onSelectVendor(vendor);
+                                  }}
+                                  className="w-full flex items-center justify-center gap-2 py-3.5 bg-rose-500 text-white rounded-2xl text-[11px] font-bold shadow-lg shadow-rose-200 hover:bg-rose-600 transition-all"
+                                >
+                                  Ver Perfil Completo
+                                </button>
+                              )}
+                              <div className="grid grid-cols-2 gap-3">
+                                {vendor.phone && (
                                 <a 
                                   href={`tel:${vendor.phone}`} 
                                   onClick={(e) => e.stopPropagation()}
@@ -1376,7 +1711,8 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                               )}
                             </div>
                           </div>
-                        </motion.div>
+                        </div>
+                      </motion.div>
 
                         {!expandedVendorId || expandedVendorId !== vendor.id ? (
                           <div className="flex items-center gap-2 text-slate-400 text-[10px] font-bold uppercase tracking-widest pt-1 group-hover:text-rose-400 transition-colors">
@@ -1400,7 +1736,13 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                   <motion.div 
                     layout
                     key={vendor.id}
-                    onClick={() => setExpandedVendorId(expandedVendorId === vendor.id ? null : vendor.id)}
+                    onClick={() => {
+                      if (onSelectVendor) {
+                        onSelectVendor(vendor);
+                      } else {
+                        setExpandedVendorId(expandedVendorId === vendor.id ? null : vendor.id);
+                      }
+                    }}
                     className="bg-white rounded-[24px] overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl transition-all cursor-pointer group"
                   >
                     <div className="flex flex-col sm:flex-row">
@@ -1420,16 +1762,38 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                         <div className="flex justify-between items-start gap-4">
                           <div>
                             <h3 className="text-xl font-serif font-bold text-slate-800 group-hover:text-rose-600 transition-colors">{vendor.name}</h3>
-                            <div className="flex items-center gap-2 mt-2">
-                              <div className="flex items-center gap-1 text-amber-500 text-sm font-bold">
-                                <Star className="w-4 h-4 fill-amber-500" />
-                                <span>{vendor.rating || '4.5'}</span>
+                            <div className="flex flex-col gap-2 mt-2">
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1 text-amber-500 text-sm font-bold">
+                                  <Star className="w-4 h-4 fill-amber-500" />
+                                  <span>{vendor.rating || '4.5'}</span>
+                                </div>
+                                <span className="text-slate-300">|</span>
+                                <div className="flex items-center gap-1 text-slate-500 text-xs">
+                                  <MapPin className="w-3.5 h-3.5 text-rose-400" />
+                                  <span className="truncate max-w-[200px]">{vendor.address}</span>
+                                </div>
                               </div>
-                              <span className="text-slate-300">|</span>
-                              <div className="flex items-center gap-1 text-slate-500 text-xs">
-                                <MapPin className="w-3.5 h-3.5 text-rose-400" />
-                                <span className="truncate max-w-[200px]">{vendor.address}</span>
+                              <div className="flex items-center gap-2">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Tu Calificación:</p>
+                                <StarRating 
+                                  rating={getFavorite(vendor.id)?.userRating || 0} 
+                                  interactive 
+                                  onRate={(r) => handleRateVendor(vendor, r)}
+                                  size="w-3.5 h-3.5"
+                                />
                               </div>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  addToBudget(vendor);
+                                }}
+                                disabled={addingToBudget === vendor.id}
+                                className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-rose-500 hover:text-rose-600 transition-colors mt-1"
+                              >
+                                <Wallet className="w-3 h-3" />
+                                {addingToBudget === vendor.id ? 'Añadiendo...' : 'Añadir al Presupuesto'}
+                              </button>
                             </div>
                           </div>
                           <button 
@@ -1503,6 +1867,17 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                                   </div>
                                 )}
                                 <div className="flex gap-3 items-end">
+                                  {onSelectVendor && (
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onSelectVendor(vendor);
+                                      }}
+                                      className="flex-1 py-3 bg-rose-500 text-white rounded-xl text-center text-xs font-bold hover:bg-rose-600 transition-all shadow-lg shadow-rose-200"
+                                    >
+                                      Ver Perfil
+                                    </button>
+                                  )}
                                   {vendor.phone && (
                                     <a 
                                       href={`tel:${vendor.phone}`}
@@ -1559,10 +1934,16 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                               <span>{vendor.rating || '4.5'}</span>
                             </div>
                             <button 
-                              onClick={() => setExpandedVendorId(vendor.id)}
+                              onClick={() => {
+                                if (onSelectVendor) {
+                                  onSelectVendor(vendor);
+                                } else {
+                                  setExpandedVendorId(vendor.id);
+                                }
+                              }}
                               className="w-full py-2 bg-rose-500 text-white text-[10px] font-bold uppercase tracking-widest rounded-lg"
                             >
-                              Ver Detalles
+                              Ver Perfil
                             </button>
                           </div>
                         </Popup>
@@ -1654,19 +2035,29 @@ export const VendorSearch: React.FC<{ weddingId: string }> = ({ weddingId }) => 
                                 </div>
                               )}
                               
-                              <div className="flex gap-4">
-                                {vendor.phone && (
-                                  <a href={`tel:${vendor.phone}`} className="flex-1 flex items-center justify-center gap-2 py-4 bg-rose-500 text-white rounded-2xl text-sm font-bold shadow-lg shadow-rose-200">
-                                    <Phone className="w-4 h-4" />
-                                    Llamar
-                                  </a>
+                              <div className="flex flex-col gap-4">
+                                {onSelectVendor && (
+                                  <button 
+                                    onClick={() => onSelectVendor(vendor)}
+                                    className="w-full flex items-center justify-center gap-2 py-4 bg-rose-500 text-white rounded-2xl text-sm font-bold shadow-lg shadow-rose-200 hover:bg-rose-600 transition-all"
+                                  >
+                                    Ver Perfil Completo
+                                  </button>
                                 )}
-                                {vendor.website && (
-                                  <a href={vendor.website} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 py-4 bg-white border border-slate-200 text-slate-700 rounded-2xl text-sm font-bold">
-                                    <Globe className="w-4 h-4" />
-                                    Sitio Web
-                                  </a>
-                                )}
+                                <div className="flex gap-4">
+                                  {vendor.phone && (
+                                    <a href={`tel:${vendor.phone}`} className="flex-1 flex items-center justify-center gap-2 py-4 bg-white border border-slate-200 text-slate-700 rounded-2xl text-sm font-bold">
+                                      <Phone className="w-4 h-4" />
+                                      Llamar
+                                    </a>
+                                  )}
+                                  {vendor.website && (
+                                    <a href={vendor.website} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-2 py-4 bg-white border border-slate-200 text-slate-700 rounded-2xl text-sm font-bold">
+                                      <Globe className="w-4 h-4" />
+                                      Sitio Web
+                                    </a>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </div>

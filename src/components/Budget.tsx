@@ -782,7 +782,14 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                                 <tr className="group hover:bg-slate-50 transition-colors">
                                   <td className="px-8 py-6">
                                     <div className="space-y-1">
-                                      <div className="font-bold text-slate-800">{item.name}</div>
+                                      <div className="flex items-center gap-2">
+                                        <div className="font-bold text-slate-800">{item.name}</div>
+                                        {item.vendorId && (
+                                          <span className="bg-rose-50 text-rose-500 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md border border-rose-100">
+                                            Proveedor
+                                          </span>
+                                        )}
+                                      </div>
                                       <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">{item.category}</div>
                                     </div>
                                   </td>

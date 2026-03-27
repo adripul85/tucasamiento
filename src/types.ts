@@ -41,6 +41,7 @@ export interface BudgetItem {
   name: string;
   estimated: number;
   paid: number;
+  vendorId?: string;
 }
 
 export interface Payment {
@@ -89,6 +90,7 @@ export interface WeddingWebsite {
       food?: string;
       music?: string;
       dressCode?: string;
+      photobooth?: string;
       other?: string;
     };
   }[];
