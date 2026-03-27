@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plane, MapPin, Calendar, Search, Heart, Map, Sparkles, Navigation, ArrowRight, Globe, Compass, Star, Loader2, Info } from 'lucide-react';
+import { Plane, MapPin, Calendar, Search, Heart, Map, Sparkles, Navigation, ArrowRight, Globe, Compass, Star, Loader2, Info, X } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
 const DESTINATIONS = [
@@ -68,6 +68,61 @@ export const Honeymoon: React.FC = () => {
   const [destQuery, setDestQuery] = useState('');
   const [destResults, setDestResults] = useState<any[]>(DESTINATIONS);
   const [destLoading, setDestLoading] = useState(false);
+
+  const [showPlanner, setShowPlanner] = useState(false);
+  const [itinerary, setItinerary] = useState<any>(null);
+  const [planningLoading, setPlanningLoading] = useState(false);
+  const [planningParams, setPlanningParams] = useState({
+    destination: '',
+    days: 5,
+    style: 'Romántico'
+  });
+
+  const generateItinerary = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!planningParams.destination) return;
+
+    setPlanningLoading(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Crea un itinerario detallado de luna de miel para ${planningParams.days} días en ${planningParams.destination}. El estilo del viaje es ${planningParams.style}. Devuelve un JSON con: title, overview, days (array de objetos con day, title, activities (array de strings), tips (array de strings)).`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              overview: { type: Type.STRING },
+              days: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    day: { type: Type.NUMBER },
+                    title: { type: Type.STRING },
+                    activities: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    tips: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  },
+                  required: ["day", "title", "activities"],
+                },
+              },
+            },
+            required: ["title", "overview", "days"],
+          },
+        },
+      });
+
+      const data = JSON.parse(response.text || "{}");
+      setItinerary(data);
+    } catch (err) {
+      console.error('Error generating itinerary:', err);
+      setError('No se pudo generar el itinerario. Inténtalo de nuevo.');
+    } finally {
+      setPlanningLoading(false);
+    }
+  };
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -476,7 +531,10 @@ export const Honeymoon: React.FC = () => {
               </li>
             ))}
           </ul>
-          <button className="bg-slate-900 text-white font-bold px-8 py-4 rounded-2xl hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/10">
+          <button 
+            onClick={() => setShowPlanner(true)}
+            className="bg-slate-900 text-white font-bold px-8 py-4 rounded-2xl hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/10"
+          >
             Empezar a Planificar
           </button>
         </div>
@@ -495,6 +553,186 @@ export const Honeymoon: React.FC = () => {
           </div>
         </div>
       </section>
+      {/* Modal del Planificador */}
+      <AnimatePresence>
+        {showPlanner && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowPlanner(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-4xl bg-white rounded-[40px] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+            >
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-500">
+                    <Compass className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-serif font-bold text-slate-800">Planificador de Itinerario</h3>
+                    <p className="text-sm text-slate-500 font-medium">Diseña tu viaje soñado con IA</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowPlanner(false)}
+                  className="p-3 bg-slate-50 rounded-2xl text-slate-400 hover:text-rose-500 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-8 space-y-12">
+                {!itinerary ? (
+                  <form onSubmit={generateItinerary} className="max-w-xl mx-auto space-y-8 py-12">
+                    <div className="space-y-4">
+                      <label className="text-sm font-bold text-slate-400 uppercase tracking-widest ml-1">¿A dónde queréis ir?</label>
+                      <div className="relative">
+                        <MapPin className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-rose-500" />
+                        <input 
+                          type="text"
+                          required
+                          placeholder="Ej: Bali, Indonesia"
+                          className="w-full bg-slate-50 border border-slate-100 rounded-3xl pl-16 pr-8 py-5 text-lg outline-none focus:ring-2 focus:ring-rose-500 transition-all font-medium"
+                          value={planningParams.destination}
+                          onChange={e => setPlanningParams({...planningParams, destination: e.target.value})}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-6">
+                      <div className="space-y-4">
+                        <label className="text-sm font-bold text-slate-400 uppercase tracking-widest ml-1">Duración (Días)</label>
+                        <input 
+                          type="number"
+                          min="1"
+                          max="30"
+                          className="w-full bg-slate-50 border border-slate-100 rounded-3xl px-8 py-5 text-lg outline-none focus:ring-2 focus:ring-rose-500 transition-all font-medium"
+                          value={planningParams.days}
+                          onChange={e => setPlanningParams({...planningParams, days: parseInt(e.target.value)})}
+                        />
+                      </div>
+                      <div className="space-y-4">
+                        <label className="text-sm font-bold text-slate-400 uppercase tracking-widest ml-1">Estilo de Viaje</label>
+                        <select 
+                          className="w-full bg-slate-50 border border-slate-100 rounded-3xl px-8 py-5 text-lg outline-none focus:ring-2 focus:ring-rose-500 transition-all font-medium appearance-none"
+                          value={planningParams.style}
+                          onChange={e => setPlanningParams({...planningParams, style: e.target.value})}
+                        >
+                          <option>Romántico</option>
+                          <option>Aventura</option>
+                          <option>Relax / Playa</option>
+                          <option>Cultural</option>
+                          <option>Lujo</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <button 
+                      type="submit"
+                      disabled={planningLoading}
+                      className="w-full bg-slate-900 text-white font-bold py-6 rounded-[32px] hover:bg-slate-800 transition-all shadow-2xl shadow-slate-900/20 flex items-center justify-center gap-3 text-lg disabled:opacity-50"
+                    >
+                      {planningLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Sparkles className="w-6 h-6" />}
+                      {planningLoading ? 'Generando Itinerario...' : 'Crear mi Itinerario'}
+                    </button>
+                  </form>
+                ) : (
+                  <div className="space-y-12">
+                    <header className="text-center space-y-4">
+                      <h4 className="text-4xl font-serif font-bold text-slate-800">{itinerary.title}</h4>
+                      <p className="text-slate-500 text-lg max-w-2xl mx-auto leading-relaxed">{itinerary.overview}</p>
+                      <button 
+                        onClick={() => setItinerary(null)}
+                        className="text-rose-500 font-bold text-sm hover:underline"
+                      >
+                        Crear otro itinerario
+                      </button>
+                    </header>
+
+                    <div className="space-y-8">
+                      {itinerary.days.map((day: any, idx: number) => (
+                        <motion.div 
+                          key={idx}
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: idx * 0.1 }}
+                          className="flex gap-8"
+                        >
+                          <div className="flex flex-col items-center">
+                            <div className="w-12 h-12 bg-rose-500 text-white rounded-2xl flex items-center justify-center font-bold text-xl shadow-lg shadow-rose-500/20">
+                              {day.day}
+                            </div>
+                            <div className="flex-1 w-0.5 bg-slate-100 my-4" />
+                          </div>
+                          <div className="flex-1 space-y-6 pb-12">
+                            <h5 className="text-2xl font-serif font-bold text-slate-800">{day.title}</h5>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                              <div className="space-y-4">
+                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Actividades</p>
+                                <ul className="space-y-3">
+                                  {day.activities.map((act: string, i: number) => (
+                                    <li key={i} className="flex items-start gap-3 text-slate-600">
+                                      <div className="w-1.5 h-1.5 bg-rose-400 rounded-full mt-2 flex-shrink-0" />
+                                      {act}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                              {day.tips && (
+                                <div className="bg-indigo-50/50 p-6 rounded-3xl space-y-4 border border-indigo-100/50">
+                                  <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                                    <Sparkles className="w-3 h-3" /> Tips Románticos
+                                  </p>
+                                  <ul className="space-y-3">
+                                    {day.tips.map((tip: string, i: number) => (
+                                      <li key={i} className="text-sm text-indigo-600 font-medium italic">
+                                        "{tip}"
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+
+                    <div className="bg-slate-900 rounded-[40px] p-12 text-center space-y-6 text-white">
+                      <Heart className="w-12 h-12 text-rose-500 mx-auto fill-rose-500" />
+                      <h5 className="text-3xl font-serif font-bold">¿Listos para reservar?</h5>
+                      <p className="text-slate-400 max-w-xl mx-auto">
+                        Guarda este itinerario y empieza a buscar los mejores vuelos para vuestra aventura.
+                      </p>
+                      <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+                        <button 
+                          onClick={() => {
+                            setShowPlanner(false);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className="bg-white text-slate-900 font-bold px-8 py-4 rounded-2xl hover:bg-slate-50 transition-all"
+                        >
+                          Buscar Vuelos
+                        </button>
+                        <button className="bg-white/10 text-white font-bold px-8 py-4 rounded-2xl hover:bg-white/20 transition-all border border-white/10">
+                          Descargar PDF
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
