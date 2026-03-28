@@ -23,6 +23,7 @@ service cloud.firestore {
     //   - status: string (required, enum: invited, confirmed, declined)
     //   - email: string (optional, email format)
     //   - plusOne: bool (optional)
+    //   - dietaryRestrictions: string (optional, 1-500 chars)
     //
     // Collection: weddings/{weddingId}/tasks
     // Fields:
@@ -62,6 +63,28 @@ service cloud.firestore {
     //   - amount: number (required)
     //   - date: string (required, ISO date)
     //   - method: string (optional)
+    //
+    // Collection: weddings/{weddingId}/regalos
+    // Fields:
+    //   - weddingId: string (required)
+    //   - title: string (required)
+    //   - description: string (optional)
+    //   - targetAmount: number (required)
+    //   - collectedAmount: number (required)
+    //   - imageUrl: string (optional)
+    //   - category: string (required, enum: flight, hotel, experience, other)
+    //   - completed: bool (required)
+    //   - order: number (required)
+    //
+    // Collection: weddings/{weddingId}/contribuciones
+    // Fields:
+    //   - weddingId: string (required)
+    //   - giftId: string (required)
+    //   - guestName: string (required)
+    //   - amount: number (required)
+    //   - message: string (optional)
+    //   - date: string (required, ISO date)
+    //   - paymentId: string (optional)
     //
     // Collection: posts
     // Fields:
@@ -191,6 +214,31 @@ service cloud.firestore {
              (data.get('website', null) == null || (data.website is string && data.website.size() <= 1000));
     }
 
+    function isValidRegalo(data) {
+      return hasOnlyAllowedFields(['weddingId', 'title', 'description', 'targetAmount', 'collectedAmount', 'imageUrl', 'category', 'completed', 'order']) &&
+             data.weddingId is string && data.weddingId.size() <= 128 &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.targetAmount is number && data.targetAmount >= 0 &&
+             data.collectedAmount is number && data.collectedAmount >= 0 &&
+             data.category in ['flight', 'hotel', 'experience', 'other'] &&
+             data.completed is bool &&
+             data.order is number &&
+             (data.get('description', null) == null || (data.description is string && data.description.size() <= 2000)) &&
+             (data.get('imageUrl', null) == null || (data.imageUrl is string && data.imageUrl.size() <= 1000));
+    }
+
+    function isValidContribucion(data) {
+      return hasOnlyAllowedFields(['weddingId', 'giftId', 'guestName', 'amount', 'message', 'date', 'paymentId', 'status', 'paymentMethod', 'createdAt']) &&
+             data.weddingId is string && data.weddingId.size() <= 128 &&
+             data.giftId is string && data.giftId.size() <= 128 &&
+             data.guestName is string && data.guestName.size() > 0 && data.guestName.size() <= 100 &&
+             data.amount is number && data.amount > 0 &&
+             (data.get('date', null) == null || isValidDateString(data.date)) &&
+             (data.get('createdAt', null) == null || isValidDateString(data.createdAt)) &&
+             (data.get('message', null) == null || (data.message is string && data.message.size() <= 2000)) &&
+             (data.get('paymentId', null) == null || (data.paymentId is string && data.paymentId.size() <= 200));
+    }
+
     function isValidPost(data) {
       return hasOnlyAllowedFields(['userId', 'authorName', 'authorPhoto', 'content', 'createdAt']) &&
              data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
@@ -308,6 +356,23 @@ service cloud.firestore {
         allow read: if isWeddingOwner(weddingId);
         allow create: if isWeddingOwner(weddingId) && isValidFavoriteVendor(request.resource.data);
         allow update: if isWeddingOwner(weddingId) && isValidFavoriteVendor(request.resource.data);
+        allow delete: if isWeddingOwner(weddingId);
+      }
+
+      match /regalos/{giftId} {
+        allow read: if isWeddingOwner(weddingId) || isWebsitePublished(weddingId);
+        allow create: if isWeddingOwner(weddingId) && isValidRegalo(request.resource.data);
+        allow update: if (isWeddingOwner(weddingId) && isValidRegalo(request.resource.data)) ||
+                         (isWebsitePublished(weddingId) && 
+                          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['collectedAmount']) &&
+                          request.resource.data.collectedAmount is number);
+        allow delete: if isWeddingOwner(weddingId);
+      }
+
+      match /contribuciones/{contributionId} {
+        allow read: if isWeddingOwner(weddingId);
+        allow create: if isWebsitePublished(weddingId) && isValidContribucion(request.resource.data);
+        allow update: if false;
         allow delete: if isWeddingOwner(weddingId);
       }
     }

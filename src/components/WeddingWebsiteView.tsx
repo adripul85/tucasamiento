@@ -3,6 +3,7 @@ import { db, auth, handleFirestoreError, OperationType } from '../App';
 import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { Wedding, WeddingWebsite } from '../types';
 import { RSVPForm } from './RSVPForm';
+import { GuestGifts } from './GuestGifts';
 import { motion, AnimatePresence } from 'motion/react';
 import { Heart, Calendar, MapPin, ChevronDown, Sparkles, Music, Camera, Utensils, Users } from 'lucide-react';
 
@@ -301,18 +302,23 @@ export const WeddingWebsiteView: React.FC<WeddingWebsiteViewProps> = ({
 
       case 'rsvp':
         return (
-          <section key={section.id} id="rsvp" className="py-24 px-8 bg-rose-50/30">
-            <div className="max-w-4xl mx-auto">
-              <div className="text-center mb-16 space-y-4">
-                <h2 className="text-4xl md:text-5xl font-bold">{section.title}</h2>
-                <p className="text-lg text-slate-500 italic">Nos encantaría que nos acompañes en este gran día.</p>
-                <div className={`h-1 w-24 mx-auto ${styles.accent} bg-current`} />
+          <div key="gifts-and-rsvp">
+            <section id="gifts" className="py-24 px-8 max-w-6xl mx-auto">
+              <GuestGifts weddingId={weddingId} />
+            </section>
+            <section key={section.id} id="rsvp" className="py-24 px-8 bg-rose-50/30">
+              <div className="max-w-4xl mx-auto">
+                <div className="text-center mb-16 space-y-4">
+                  <h2 className="text-4xl md:text-5xl font-bold">{section.title}</h2>
+                  <p className="text-lg text-slate-500 italic">Nos encantaría que nos acompañes en este gran día.</p>
+                  <div className={`h-1 w-24 mx-auto ${styles.accent} bg-current`} />
+                </div>
+                <div className="bg-white p-2 rounded-[56px] shadow-xl shadow-rose-500/5 border border-slate-100">
+                  <RSVPForm weddingId={weddingId} inline={true} />
+                </div>
               </div>
-              <div className="bg-white p-2 rounded-[56px] shadow-xl shadow-rose-500/5 border border-slate-100">
-                <RSVPForm weddingId={weddingId} inline={true} />
-              </div>
-            </div>
-          </section>
+            </section>
+          </div>
         );
 
       case 'story':
@@ -442,6 +448,7 @@ export const WeddingWebsiteView: React.FC<WeddingWebsiteViewProps> = ({
         </div>
         <div className="hidden md:flex items-center gap-8 text-sm font-bold uppercase tracking-widest opacity-60">
           <a href="#" className="hover:opacity-100 transition-opacity">Inicio</a>
+          <a href="#gifts" className="hover:opacity-100 transition-opacity">Regalos</a>
           {website.sections?.filter(s => s.visible && s.type !== 'welcome').map(section => (
             <a key={section.id} href={`#${section.type}`} className="hover:opacity-100 transition-opacity">
               {section.title}

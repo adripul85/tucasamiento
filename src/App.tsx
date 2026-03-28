@@ -9,10 +9,10 @@ import { Tasks } from './components/Tasks';
 import { Budget } from './components/Budget';
 import { VendorSearch } from './components/VendorSearch';
 import { VendorDetail } from './components/VendorDetail';
+import { Honeymoon } from './components/Honeymoon';
 import { RSVPForm } from './components/RSVPForm';
 import { WebsiteBuilder } from './components/WebsiteBuilder';
 import { Blog } from './components/Blog';
-import { Honeymoon } from './components/Honeymoon';
 import { Community } from './components/Community';
 import { FavoritesList } from './components/FavoritesList';
 import { WeddingWebsiteView } from './components/WeddingWebsiteView';
@@ -967,7 +967,7 @@ const WeddingManager: React.FC<{ user: User }> = ({ user }) => {
       case 'website': return <WebsiteBuilder wedding={wedding} />;
       case 'blog': return <Blog />;
       case 'community': return <Community weddingId={wedding.id} />;
-      case 'honeymoon': return <Honeymoon />;
+      case 'honeymoon': return <Honeymoon wedding={wedding} />;
       case 'rsvp': return <RSVPForm weddingId={wedding.id} />;
       default: return <Dashboard wedding={wedding} setActiveTab={setActiveTab} />;
     }

@@ -1,734 +1,706 @@
 import React, { useState, useEffect } from 'react';
+import { db, handleFirestoreError, OperationType } from '../App';
+import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, orderBy } from 'firebase/firestore';
+import { Regalo, Wedding } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plane, MapPin, Calendar, Search, Heart, Map, Sparkles, Navigation, ArrowRight, Globe, Compass, Star, Loader2, Info, X } from 'lucide-react';
-import { GoogleGenAI, Type } from "@google/genai";
+import { 
+  Plane, 
+  Hotel, 
+  Palmtree, 
+  Utensils, 
+  Plus, 
+  Trash2, 
+  ExternalLink, 
+  Search, 
+  DollarSign, 
+  Image as ImageIcon,
+  CheckCircle2,
+  ChevronRight,
+  Heart,
+  Info,
+  Scissors,
+  ArrowRight,
+  BarChart3,
+  Map
+} from 'lucide-react';
 
-const DESTINATIONS = [
-  {
-    id: 1,
-    name: 'Maldivas',
-    description: 'Aguas cristalinas y villas sobre el mar. El paraíso definitivo.',
-    image: 'https://images.unsplash.com/photo-1514282401047-d79a71a590e8?q=80&w=800&auto=format&fit=crop',
-    rating: 4.9,
-    price: 'Desde $1,200'
-  },
-  {
-    id: 2,
-    name: 'Santorini, Grecia',
-    description: 'Atardeceres mágicos y arquitectura blanca icónica.',
-    image: 'https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?q=80&w=800&auto=format&fit=crop',
-    rating: 4.8,
-    price: 'Desde $850'
-  },
-  {
-    id: 3,
-    name: 'Bariloche, Argentina',
-    description: 'Paisajes de montaña, lagos azules y el mejor chocolate.',
-    image: 'https://images.unsplash.com/photo-1596125160901-44372993077e?q=80&w=800&auto=format&fit=crop',
-    rating: 4.9,
-    price: 'Desde $450'
-  },
-  {
-    id: 4,
-    name: 'Cataratas del Iguazú',
-    description: 'Una de las siete maravillas naturales del mundo.',
-    image: 'https://images.unsplash.com/photo-1580974511812-4b7196c56030?q=80&w=800&auto=format&fit=crop',
-    rating: 4.9,
-    price: 'Desde $380'
-  },
-  {
-    id: 5,
-    name: 'Mendoza, Argentina',
-    description: 'Ruta del vino al pie de los Andes. Romance y relax.',
-    image: 'https://images.unsplash.com/photo-1560179406-1c6c60e0dc76?q=80&w=800&auto=format&fit=crop',
-    rating: 4.8,
-    price: 'Desde $420'
-  }
-];
+const TURISMOCITY_AFFILIATE_ID = "TU_CASAMIENTO_2024"; // Placeholder for actual ID
 
-export const Honeymoon: React.FC = () => {
-  const [searchParams, setSearchParams] = useState({
-    origin: '',
-    originCode: '',
-    destination: '',
-    destinationCode: '',
-    date: '',
-    passengers: 2
-  });
-  const [flights, setFlights] = useState<any[]>([]);
+interface HoneymoonProps {
+  wedding: Wedding;
+}
+
+export const Honeymoon: React.FC<HoneymoonProps> = ({ wedding }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'search' | 'gifts'>('search');
+  const [giftSubTab, setGiftSubTab] = useState<'vuelos' | 'hoteles' | 'itinerario' | 'resumen'>('itinerario');
+  const [gifts, setGifts] = useState<Regalo[]>([]);
+  const [isAddingGift, setIsAddingGift] = useState(false);
+  const [isFragmenting, setIsFragmenting] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [hasSearched, setHasSearched] = useState(false);
 
-  // City Suggestions State
-  const [suggestions, setSuggestions] = useState<{type: 'origin' | 'destination', data: any[]}>({ type: 'origin', data: [] });
-  const [showSuggestions, setShowSuggestions] = useState(false);
-
-  // Destination Search State
-  const [destQuery, setDestQuery] = useState('');
-  const [destResults, setDestResults] = useState<any[]>(DESTINATIONS);
-  const [destLoading, setDestLoading] = useState(false);
-
-  const [showPlanner, setShowPlanner] = useState(false);
-  const [itinerary, setItinerary] = useState<any>(null);
-  const [planningLoading, setPlanningLoading] = useState(false);
-  const [planningParams, setPlanningParams] = useState({
-    destination: '',
-    days: 5,
-    style: 'Romántico'
+  // New Gift Form State
+  const [newGift, setNewGift] = useState({
+    title: '',
+    description: '',
+    targetAmount: 0,
+    category: 'experience' as Regalo['category'],
+    imageUrl: ''
   });
 
-  const generateItinerary = async (e: React.FormEvent) => {
+  // Fragmentation Form State
+  const [fragmentForm, setFragmentForm] = useState({
+    totalAmount: 0,
+    fragmentName: '',
+    fragmentCount: 10,
+    category: 'flight' as Regalo['category'],
+    description: ''
+  });
+
+  useEffect(() => {
+    if (!wedding.id) return;
+    const q = query(
+      collection(db, `weddings/${wedding.id}/regalos`),
+      orderBy('order', 'asc')
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setGifts(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Regalo)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `weddings/${wedding.id}/regalos`);
+    });
+    return unsubscribe;
+  }, [wedding.id]);
+
+  const handleAddGift = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!planningParams.destination) return;
-
-    setPlanningLoading(true);
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Crea un itinerario detallado de luna de miel para ${planningParams.days} días en ${planningParams.destination}. El estilo del viaje es ${planningParams.style}. Devuelve un JSON con: title, overview, days (array de objetos con day, title, activities (array de strings), tips (array de strings)).`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              overview: { type: Type.STRING },
-              days: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    day: { type: Type.NUMBER },
-                    title: { type: Type.STRING },
-                    activities: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    tips: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  },
-                  required: ["day", "title", "activities"],
-                },
-              },
-            },
-            required: ["title", "overview", "days"],
-          },
-        },
-      });
-
-      const data = JSON.parse(response.text || "{}");
-      setItinerary(data);
-    } catch (err) {
-      console.error('Error generating itinerary:', err);
-      setError('No se pudo generar el itinerario. Inténtalo de nuevo.');
-    } finally {
-      setPlanningLoading(false);
-    }
-  };
-
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Validate IATA codes
-    const isOriginValid = searchParams.originCode && searchParams.originCode.length === 3;
-    const isDestValid = searchParams.destinationCode && searchParams.destinationCode.length === 3;
-
-    if (!isOriginValid || !isDestValid || !searchParams.date) {
-      setError('Por favor, selecciona códigos IATA válidos (3 letras) y una fecha.');
-      return;
-    }
-
+    if (!newGift.title || newGift.targetAmount <= 0) return;
     setLoading(true);
-    setError(null);
-    setHasSearched(true);
     try {
-      const response = await fetch(
-        `/api/flights/search?originCode=${searchParams.originCode}&destinationCode=${searchParams.destinationCode}&date=${searchParams.date}&adults=${searchParams.passengers}`
-      );
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.details?.error || data.error || 'Error al buscar vuelos');
-      }
-      
-      setFlights(data);
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'No se pudieron encontrar vuelos. Verifica los códigos IATA.');
+      await addDoc(collection(db, `weddings/${wedding.id}/regalos`), {
+        weddingId: wedding.id,
+        ...newGift,
+        collectedAmount: 0,
+        completed: false,
+        order: gifts.length,
+        createdAt: new Date().toISOString()
+      });
+      setIsAddingGift(false);
+      setNewGift({
+        title: '',
+        description: '',
+        targetAmount: 0,
+        category: 'experience',
+        imageUrl: ''
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `weddings/${wedding.id}/regalos`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCityInput = async (keyword: string, type: 'origin' | 'destination') => {
-    setSearchParams(prev => ({ ...prev, [`${type}Code`]: keyword.toUpperCase() }));
-    
-    if (keyword.length >= 3) {
-      try {
-        const response = await fetch(`/api/flights/cities?keyword=${keyword}`);
-        const data = await response.json();
-        if (data && data.length > 0) {
-          setSuggestions({ type, data });
-          setShowSuggestions(true);
-        } else {
-          setShowSuggestions(false);
-        }
-      } catch (err) {
-        console.error('Error searching city:', err);
-      }
-    } else {
-      setShowSuggestions(false);
-    }
-  };
-
-  const selectCity = (city: any, type: 'origin' | 'destination') => {
-    setSearchParams(prev => ({
-      ...prev,
-      [type]: city.name,
-      [`${type}Code`]: city.code
-    }));
-    setShowSuggestions(false);
-  };
-
-  const handleDestSearch = async (e: React.FormEvent) => {
+  const handleFragmentTrip = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!destQuery.trim()) {
-      setDestResults(DESTINATIONS);
-      return;
-    }
-
-    setDestLoading(true);
+    if (fragmentForm.totalAmount <= 0 || !fragmentForm.fragmentName || fragmentForm.fragmentCount <= 0) return;
+    setLoading(true);
+    
+    const amountPerFragment = Math.round(fragmentForm.totalAmount / fragmentForm.fragmentCount);
+    
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Recomienda 3 destinos de luna de miel románticos basados en esta búsqueda: "${destQuery}". Devuelve un JSON array de objetos con: name, description, image (URL de Unsplash relacionada), rating (número), price (string con formato "Desde $X").`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                name: { type: Type.STRING },
-                description: { type: Type.STRING },
-                image: { type: Type.STRING },
-                rating: { type: Type.NUMBER },
-                price: { type: Type.STRING },
-              },
-              required: ["name", "description", "image", "rating", "price"],
-            },
-          },
-        },
+      const promises = [];
+      for (let i = 0; i < fragmentForm.fragmentCount; i++) {
+        promises.push(
+          addDoc(collection(db, `weddings/${wedding.id}/regalos`), {
+            weddingId: wedding.id,
+            title: `${fragmentForm.fragmentName} (${i + 1}/${fragmentForm.fragmentCount})`,
+            description: fragmentForm.description || `Fragmento ${i + 1} de tu viaje soñado.`,
+            targetAmount: amountPerFragment,
+            collectedAmount: 0,
+            category: fragmentForm.category,
+            completed: false,
+            order: gifts.length + i,
+            createdAt: new Date().toISOString()
+          })
+        );
+      }
+      await Promise.all(promises);
+      setIsFragmenting(false);
+      setFragmentForm({
+        totalAmount: 0,
+        fragmentName: '',
+        fragmentCount: 10,
+        category: 'flight',
+        description: ''
       });
-
-      const data = JSON.parse(response.text || "[]");
-      setDestResults(data.length > 0 ? data : DESTINATIONS);
-    } catch (err) {
-      console.error('Error searching destinations:', err);
-      // Fallback to local search
-      const filtered = DESTINATIONS.filter(d => 
-        d.name.toLowerCase().includes(destQuery.toLowerCase()) || 
-        d.description.toLowerCase().includes(destQuery.toLowerCase())
-      );
-      setDestResults(filtered.length > 0 ? filtered : DESTINATIONS);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `weddings/${wedding.id}/regalos`);
     } finally {
-      setDestLoading(false);
+      setLoading(false);
     }
   };
 
-  const searchCity = async (keyword: string, type: 'origin' | 'destination') => {
-    // This is now handled by handleCityInput and selectCity
-    // But we keep a fallback for when they just type a code
-    if (keyword.length === 3) {
-      setSearchParams(prev => ({ ...prev, [`${type}Code`]: keyword.toUpperCase() }));
+  const handleDeleteGift = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, `weddings/${wedding.id}/regalos`, id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `weddings/${wedding.id}/regalos/${id}`);
     }
   };
+
+  const categories = [
+    { id: 'flight', label: 'Vuelos', icon: Plane, color: 'bg-blue-50 text-blue-500' },
+    { id: 'hotel', label: 'Alojamiento', icon: Hotel, color: 'bg-indigo-50 text-indigo-500' },
+    { id: 'experience', label: 'Experiencias', icon: Utensils, color: 'bg-rose-50 text-rose-500' },
+    { id: 'other', label: 'Otros', icon: Palmtree, color: 'bg-emerald-50 text-emerald-500' },
+  ];
 
   return (
-    <div className="space-y-16 pb-20">
-      <header className="space-y-6 text-center max-w-3xl mx-auto">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-500 rounded-full text-xs font-bold uppercase tracking-widest border border-indigo-100"
-        >
-          <Globe className="w-3 h-3" />
-          Luna de Miel
-        </motion.div>
-        <motion.h2 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="text-4xl md:text-6xl font-serif font-bold text-slate-800 leading-tight"
-        >
-          El Viaje de vuestras Vidas
-        </motion.h2>
-        <motion.p 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="text-slate-500 text-lg md:text-xl"
-        >
-          Planifica cada detalle de tu luna de miel perfecta. Desde el vuelo hasta las experiencias más románticas.
-        </motion.p>
-      </header>
-
-      {/* Buscador de Vuelos */}
-      <section className="bg-white rounded-[48px] p-8 md:p-12 shadow-2xl shadow-indigo-500/10 border border-slate-100 relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-8 opacity-5">
-          <Plane className="w-32 h-32 rotate-45" />
+    <div className="space-y-8 pb-12">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-3xl font-serif font-bold text-slate-800">Luna de Miel</h2>
+          <p className="text-slate-500">Planifica tu viaje soñado y deja que tus invitados te ayuden a llegar.</p>
         </div>
-        
-        <div className="relative space-y-8">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-500 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
-              <Search className="w-5 h-5" />
-            </div>
-            <h3 className="text-2xl font-serif font-bold text-slate-800">Buscador de Vuelos Reales</h3>
-          </div>
-
-          <form onSubmit={handleSearch} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="space-y-2 relative">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1 flex items-center gap-2">
-                <Navigation className="w-3 h-3" /> Origen (Ciudad o IATA)
-              </label>
-              <input 
-                type="text" 
-                placeholder="Ej: Madrid o MAD"
-                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
-                value={searchParams.originCode}
-                onChange={e => handleCityInput(e.target.value, 'origin')}
-              />
-              {showSuggestions && suggestions.type === 'origin' && (
-                <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-2xl shadow-xl overflow-hidden">
-                  {suggestions.data.map((city, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => selectCity(city, 'origin')}
-                      className="w-full px-6 py-3 text-left hover:bg-slate-50 flex items-center justify-between transition-colors"
-                    >
-                      <span className="font-medium text-slate-700">{city.name}</span>
-                      <span className="text-xs font-bold text-indigo-500 bg-indigo-50 px-2 py-1 rounded-lg">{city.code}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="space-y-2 relative">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1 flex items-center gap-2">
-                <MapPin className="w-3 h-3" /> Destino (Ciudad o IATA)
-              </label>
-              <input 
-                type="text" 
-                placeholder="Ej: Paris o CDG"
-                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
-                value={searchParams.destinationCode}
-                onChange={e => handleCityInput(e.target.value, 'destination')}
-              />
-              {showSuggestions && suggestions.type === 'destination' && (
-                <div className="absolute z-50 top-full left-0 right-0 mt-2 bg-white border border-slate-100 rounded-2xl shadow-xl overflow-hidden">
-                  {suggestions.data.map((city, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => selectCity(city, 'destination')}
-                      className="w-full px-6 py-3 text-left hover:bg-slate-50 flex items-center justify-between transition-colors"
-                    >
-                      <span className="font-medium text-slate-700">{city.name}</span>
-                      <span className="text-xs font-bold text-indigo-500 bg-indigo-50 px-2 py-1 rounded-lg">{city.code}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1 flex items-center gap-2">
-                <Calendar className="w-3 h-3" /> Fecha
-              </label>
-              <input 
-                type="date" 
-                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
-                value={searchParams.date}
-                onChange={e => setSearchParams({...searchParams, date: e.target.value})}
-              />
-            </div>
-            <div className="flex items-end">
-              <button 
-                type="submit"
-                disabled={loading}
-                className="w-full bg-indigo-500 text-white font-bold py-4 rounded-2xl hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 group disabled:opacity-50"
-              >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Buscar Vuelos'}
-                {!loading && <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />}
-              </button>
-            </div>
-          </form>
-
-          {error && (
-            <div className="p-4 bg-rose-50 text-rose-500 rounded-2xl text-sm font-medium border border-rose-100 flex items-center gap-3">
-              <Info className="w-5 h-5 flex-shrink-0" />
-              {error}
-            </div>
-          )}
-
-          {/* Resultados de Vuelos */}
-          <AnimatePresence>
-            {flights.length > 0 ? (
-              <motion.div 
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="space-y-4 pt-8 border-t border-slate-100"
-              >
-                <h4 className="text-xl font-serif font-bold text-slate-800">Mejores Ofertas Encontradas</h4>
-                <div className="grid grid-cols-1 gap-4">
-                  {flights.map((flight, idx) => (
-                    <motion.div 
-                      key={idx} 
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: idx * 0.05 }}
-                      className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex flex-col md:flex-row items-center justify-between gap-6 hover:bg-white hover:shadow-xl transition-all"
-                    >
-                      <div className="flex items-center gap-8">
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-slate-800">
-                            {new Date(flight.depart_date).toLocaleDateString()}
-                          </div>
-                          <div className="text-xs font-bold text-slate-400 uppercase">{flight.origin}</div>
-                        </div>
-                        <div className="flex flex-col items-center gap-1 min-w-[100px]">
-                          <div className="text-[10px] font-bold text-slate-400 uppercase">
-                            {flight.number_of_changes === 0 ? 'Directo' : `${flight.number_of_changes} escalas`}
-                          </div>
-                          <div className="w-full h-[2px] bg-slate-200 relative">
-                            <Plane className="w-4 h-4 text-indigo-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-50 rounded-full p-0.5" />
-                          </div>
-                          <div className="text-[10px] font-bold text-indigo-500 uppercase">{flight.gate}</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-slate-800">--:--</div>
-                          <div className="text-xs font-bold text-slate-400 uppercase">{flight.destination}</div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-6">
-                        <div className="text-right">
-                          <div className="text-2xl font-bold text-indigo-500">{flight.value} USD</div>
-                          <div className="text-xs font-bold text-slate-400 uppercase">Precio estimado</div>
-                        </div>
-                        <button className="bg-slate-900 text-white font-bold px-6 py-3 rounded-xl hover:bg-slate-800 transition-all">
-                          Reservar
-                        </button>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              </motion.div>
-            ) : hasSearched && !loading && !error && (
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="pt-8 border-t border-slate-100 text-center space-y-4"
-              >
-                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto text-slate-300">
-                  <Search className="w-8 h-8" />
-                </div>
-                <p className="text-slate-500 font-medium">No se encontraron ofertas para esta ruta y fecha específica.</p>
-                <p className="text-slate-400 text-sm">Prueba con ciudades principales o fechas diferentes.</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </section>
-
-      {/* Buscador de Destinos */}
-      <section className="space-y-12">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 px-4">
-          <div className="space-y-2">
-            <h3 className="text-3xl font-serif font-bold text-slate-800">Destinos de Ensueño</h3>
-            <p className="text-slate-500">¿No sabes a dónde ir? Deja que nuestra IA te recomiende el lugar perfecto.</p>
-          </div>
-          <form onSubmit={handleDestSearch} className="flex gap-2 w-full md:w-auto">
-            <div className="relative flex-1 md:w-80">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input 
-                type="text"
-                placeholder="Ej: Playa tranquila, aventura en montaña..."
-                className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                value={destQuery}
-                onChange={e => setDestQuery(e.target.value)}
-              />
-            </div>
-            <button 
-              type="submit"
-              disabled={destLoading}
-              className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-bold text-sm hover:bg-slate-800 transition-all disabled:opacity-50 flex items-center gap-2"
-            >
-              {destLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              {destLoading ? 'Buscando...' : 'Recomendar'}
-            </button>
-          </form>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {destResults.map((dest, i) => (
-            <motion.div
-              key={dest.id || i}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: i * 0.1 }}
-              className="group cursor-pointer"
-            >
-              <div className="relative h-80 rounded-[40px] overflow-hidden mb-6 shadow-xl shadow-slate-200">
-                <img 
-                  src={dest.image} 
-                  alt={dest.name}
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                <div className="absolute top-6 right-6 px-3 py-1 bg-white/90 backdrop-blur-md rounded-xl text-xs font-bold text-slate-800 flex items-center gap-1 shadow-lg">
-                  <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                  {dest.rating}
-                </div>
-                <div className="absolute bottom-6 left-6 right-6 transform translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
-                  <button className="w-full bg-white text-slate-800 font-bold py-3 rounded-2xl shadow-xl">
-                    Explorar Destino
-                  </button>
-                </div>
-              </div>
-              <div className="px-2 space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xl font-serif font-bold text-slate-800">{dest.name}</h4>
-                  <span className="text-indigo-500 font-bold text-sm">{dest.price}</span>
-                </div>
-                <p className="text-slate-500 text-sm leading-relaxed">
-                  {dest.description}
-                </p>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </section>
-
-      {/* Planificador de Itinerario */}
-      <section className="bg-slate-50 rounded-[48px] p-12 flex flex-col md:flex-row items-center gap-12">
-        <div className="flex-1 space-y-6">
-          <div className="w-16 h-16 bg-rose-500/10 rounded-3xl flex items-center justify-center text-rose-500">
-            <Compass className="w-8 h-8" />
-          </div>
-          <h3 className="text-3xl font-serif font-bold text-slate-800">Crea tu Itinerario Personalizado</h3>
-          <p className="text-slate-500 text-lg">
-            Nuestra herramienta inteligente te ayuda a organizar cada día de tu viaje para que no te pierdas nada importante.
-          </p>
-          <ul className="space-y-4">
-            {['Sugerencias de actividades románticas', 'Gestión de reservas y tickets', 'Mapa interactivo de vuestra ruta'].map((item, i) => (
-              <li key={i} className="flex items-center gap-3 text-slate-700 font-medium">
-                <div className="w-5 h-5 bg-rose-500 rounded-full flex items-center justify-center text-white">
-                  <Heart className="w-3 h-3 fill-white" />
-                </div>
-                {item}
-              </li>
-            ))}
-          </ul>
-          <button 
-            onClick={() => setShowPlanner(true)}
-            className="bg-slate-900 text-white font-bold px-8 py-4 rounded-2xl hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/10"
+        <div className="flex p-1 bg-slate-100 rounded-2xl">
+          <button
+            onClick={() => setActiveSubTab('search')}
+            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${
+              activeSubTab === 'search' ? 'bg-white text-rose-500 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
           >
-            Empezar a Planificar
+            Buscar Viajes
+          </button>
+          <button
+            onClick={() => setActiveSubTab('gifts')}
+            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${
+              activeSubTab === 'gifts' ? 'bg-white text-rose-500 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Lista de Regalos
           </button>
         </div>
-        <div className="flex-1 relative">
-          <div className="aspect-square rounded-[48px] overflow-hidden shadow-2xl rotate-3">
-            <img 
-              src="https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=800&auto=format&fit=crop" 
-              alt="Planning"
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-          </div>
-          <div className="absolute -bottom-6 -left-6 bg-white p-6 rounded-3xl shadow-xl -rotate-6 border border-slate-100 max-w-[200px]">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Próxima Parada</p>
-            <p className="text-lg font-serif font-bold text-slate-800">Cena bajo las estrellas</p>
-          </div>
-        </div>
-      </section>
-      {/* Modal del Planificador */}
-      <AnimatePresence>
-        {showPlanner && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowPlanner(false)}
-              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-4xl bg-white rounded-[40px] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
-            >
-              <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-500">
-                    <Compass className="w-6 h-6" />
+      </header>
+
+      <AnimatePresence mode="wait">
+        {activeSubTab === 'search' ? (
+          <motion.div
+            key="search"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            className="space-y-8"
+          >
+            {/* Turismocity Integration Search Widget */}
+            <div className="bg-white rounded-[40px] border border-slate-100 shadow-xl overflow-hidden">
+              <div className="p-8 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center text-white">
+                    <Search className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-serif font-bold text-slate-800">Planificador de Itinerario</h3>
-                    <p className="text-sm text-slate-500 font-medium">Diseña tu viaje soñado con IA</p>
+                    <h3 className="text-xl font-serif font-bold text-slate-800">Buscador Turismocity</h3>
+                    <p className="text-slate-400 text-xs">Encontrá el mejor precio y fragmentá el costo en tu lista.</p>
                   </div>
                 </div>
-                <button 
-                  onClick={() => setShowPlanner(false)}
-                  className="p-3 bg-slate-50 rounded-2xl text-slate-400 hover:text-rose-500 transition-colors"
+                <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-full text-blue-600 text-[10px] font-bold uppercase tracking-widest">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Precios Actualizados
+                </div>
+              </div>
+              
+              <div className="relative h-[600px] w-full bg-slate-50">
+                <iframe 
+                  src={`https://www.turismocity.com.ar/widget?affiliate_id=${TURISMOCITY_AFFILIATE_ID}`}
+                  className="w-full h-full border-none"
+                  title="Turismocity Search"
+                />
+                <div className="absolute bottom-4 right-4 group">
+                  <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-slate-100 max-w-xs transform translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all">
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      <strong>Tip:</strong> Cuando encuentres el precio total de tu viaje, ve a la pestaña <strong>"Lista de Regalos"</strong> y usa la herramienta de <strong>"Fragmentar"</strong> para dividirlo en cuotas para tus invitados.
+                    </p>
+                  </div>
+                  <div className="bg-blue-600 text-white p-3 rounded-full shadow-lg cursor-help">
+                    <Info className="w-5 h-5" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Turismocity Integration Banner */}
+            <div className="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-[40px] p-8 md:p-12 text-white relative overflow-hidden shadow-2xl shadow-blue-200">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
+              <div className="relative z-10 max-w-2xl space-y-6">
+                <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-widest">
+                  <Plane className="w-4 h-4" />
+                  Alianza Estratégica
+                </div>
+                <h3 className="text-4xl md:text-5xl font-serif font-bold leading-tight">
+                  ¿Ya tenés tu viaje?
+                </h3>
+                <p className="text-blue-100 text-lg leading-relaxed">
+                  Si ya sabés a dónde querés ir, podés buscar directamente en Turismocity y luego fragmentar el costo aquí.
+                </p>
+                <div className="flex flex-wrap gap-4 pt-4">
+                  <a 
+                    href={`https://www.turismocity.com.ar/vuelos?affiliate_id=${TURISMOCITY_AFFILIATE_ID}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="bg-white text-blue-600 px-8 py-4 rounded-2xl font-bold hover:bg-blue-50 transition-all flex items-center gap-2 shadow-xl shadow-black/10"
+                  >
+                    Vuelos Turismocity <ExternalLink className="w-4 h-4" />
+                  </a>
+                  <a 
+                    href={`https://www.turismocity.com.ar/hoteles?affiliate_id=${TURISMOCITY_AFFILIATE_ID}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="bg-blue-500/30 backdrop-blur-md text-white border border-white/30 px-8 py-4 rounded-2xl font-bold hover:bg-white/20 transition-all flex items-center gap-2"
+                  >
+                    Hoteles Turismocity <ExternalLink className="w-4 h-4" />
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* Inspiration Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[
+                { title: 'Cancún & Riviera Maya', price: 'Desde $1.200.000', image: 'https://images.unsplash.com/photo-1552074284-5e88ef1aef18?auto=format&fit=crop&w=600&q=80' },
+                { title: 'Madrid & París', price: 'Desde $1.800.000', image: 'https://images.unsplash.com/photo-1539037116277-4db20889f2d4?auto=format&fit=crop&w=600&q=80' },
+                { title: 'Bariloche Romántico', price: 'Desde $350.000', image: 'https://images.unsplash.com/photo-1544550581-5f7ceaf7f992?auto=format&fit=crop&w=600&q=80' },
+              ].map((dest, i) => (
+                <div key={i} className="group relative h-80 rounded-[32px] overflow-hidden cursor-pointer shadow-lg">
+                  <img src={dest.image} alt={dest.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                  <div className="absolute bottom-6 left-6 right-6">
+                    <h4 className="text-white font-bold text-xl mb-1">{dest.title}</h4>
+                    <p className="text-white/70 text-sm">{dest.price}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="gifts"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-8"
+          >
+            {/* Gift List Management Header */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="flex items-center gap-4">
+                <div className="bg-rose-50 p-4 rounded-2xl text-rose-500">
+                  <Heart className="w-6 h-6 fill-rose-500" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-serif font-bold text-slate-800">Tus Deseos</h3>
+                  <p className="text-slate-400 text-sm">Organiza tu luna de miel y fragmenta los costos.</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => setIsFragmenting(true)}
+                  className="bg-blue-50 text-blue-600 px-6 py-3 rounded-2xl font-bold hover:bg-blue-100 transition-all flex items-center gap-2"
                 >
-                  <X className="w-6 h-6" />
+                  <Scissors className="w-5 h-5" />
+                  Fragmentar Viaje
+                </button>
+                <button
+                  onClick={() => setIsAddingGift(true)}
+                  className="bg-rose-500 text-white px-6 py-3 rounded-2xl font-bold hover:bg-rose-600 transition-all shadow-lg shadow-rose-100 flex items-center gap-2"
+                >
+                  <Plus className="w-5 h-5" />
+                  Agregar Regalo
+                </button>
+              </div>
+            </div>
+
+            {/* Sub-tabs for Gift List */}
+            <div className="flex flex-wrap gap-2 p-1 bg-slate-100 rounded-2xl w-fit">
+              {[
+                { id: 'itinerario', label: 'Itinerario', icon: Map },
+                { id: 'vuelos', label: 'Vuelos', icon: Plane },
+                { id: 'hoteles', label: 'Hoteles', icon: Hotel },
+                { id: 'resumen', label: 'Resumen', icon: BarChart3 },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setGiftSubTab(tab.id as any)}
+                  className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                    giftSubTab === tab.id 
+                      ? 'bg-white text-rose-500 shadow-sm' 
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <tab.icon className="w-4 h-4" />
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {giftSubTab === 'resumen' ? (
+              <div className="space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-2">
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Total Objetivo</p>
+                    <p className="text-3xl font-serif font-bold text-slate-800">
+                      ${gifts.reduce((acc, g) => acc + g.targetAmount, 0).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-2">
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Recaudado</p>
+                    <p className="text-3xl font-serif font-bold text-rose-500">
+                      ${gifts.reduce((acc, g) => acc + g.collectedAmount, 0).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm space-y-2">
+                    <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Pendiente</p>
+                    <p className="text-3xl font-serif font-bold text-blue-500">
+                      ${(gifts.reduce((acc, g) => acc + g.targetAmount, 0) - gifts.reduce((acc, g) => acc + g.collectedAmount, 0)).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xl font-serif font-bold text-slate-800">Progreso General</h4>
+                    <span className="text-rose-500 font-bold">
+                      {gifts.reduce((acc, g) => acc + g.targetAmount, 0) > 0 
+                        ? ((gifts.reduce((acc, g) => acc + g.collectedAmount, 0) / gifts.reduce((acc, g) => acc + g.targetAmount, 0)) * 100).toFixed(1)
+                        : 0}%
+                    </span>
+                  </div>
+                  <div className="h-4 bg-slate-100 rounded-full overflow-hidden">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${gifts.reduce((acc, g) => acc + g.targetAmount, 0) > 0 
+                        ? (gifts.reduce((acc, g) => acc + g.collectedAmount, 0) / gifts.reduce((acc, g) => acc + g.targetAmount, 0)) * 100
+                        : 0}%` }}
+                      className="h-full bg-gradient-to-r from-rose-500 to-orange-400 rounded-full"
+                    />
+                  </div>
+                  <p className="text-slate-400 text-sm text-center italic">
+                    ¡Llevas recaudado el {gifts.reduce((acc, g) => acc + g.targetAmount, 0) > 0 
+                        ? ((gifts.reduce((acc, g) => acc + g.collectedAmount, 0) / gifts.reduce((acc, g) => acc + g.targetAmount, 0)) * 100).toFixed(1)
+                        : 0}% de tu viaje soñado!
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <AnimatePresence>
+                  {gifts
+                    .filter(gift => {
+                      if (giftSubTab === 'vuelos') return gift.category === 'flight';
+                      if (giftSubTab === 'hoteles') return gift.category === 'hotel';
+                      return true; // Itinerario shows all
+                    })
+                    .map((gift) => (
+                      <motion.div
+                        key={gift.id}
+                        layout
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden group"
+                      >
+                        <div className="relative h-48">
+                          <img 
+                            src={gift.imageUrl || `https://picsum.photos/seed/${gift.id}/600/400`} 
+                            alt={gift.title} 
+                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="absolute top-4 right-4 flex gap-2">
+                            <button 
+                              onClick={() => handleDeleteGift(gift.id)}
+                              className="p-2 bg-white/90 backdrop-blur-md text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all shadow-lg"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <div className="absolute bottom-4 left-4">
+                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider backdrop-blur-md ${
+                              categories.find(c => c.id === gift.category)?.color || 'bg-white/90 text-slate-800'
+                            }`}>
+                              {categories.find(c => c.id === gift.category)?.label}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="p-6 space-y-4">
+                          <div>
+                            <h4 className="font-bold text-slate-800 text-lg line-clamp-1">{gift.title}</h4>
+                            <p className="text-slate-400 text-xs line-clamp-2 mt-1">{gift.description}</p>
+                          </div>
+
+                          <div className="space-y-2">
+                            <div className="flex justify-between text-xs font-bold">
+                              <span className="text-slate-400">Progreso</span>
+                              <span className="text-rose-500">${gift.collectedAmount.toLocaleString()} / ${gift.targetAmount.toLocaleString()}</span>
+                            </div>
+                            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${Math.min(100, (gift.collectedAmount / gift.targetAmount) * 100)}%` }}
+                                className="h-full bg-rose-500 rounded-full"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                </AnimatePresence>
+              </div>
+            )}
+
+            {gifts.length === 0 && !isAddingGift && (
+              <div className="text-center py-20 bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-200">
+                <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mx-auto text-slate-300 mb-4 shadow-sm">
+                  <Palmtree className="w-10 h-10" />
+                </div>
+                <h4 className="text-xl font-serif font-bold text-slate-800">Tu lista está vacía</h4>
+                <p className="text-slate-400 max-w-xs mx-auto mt-2">
+                  Comienza agregando los tramos de tu vuelo, noches de hotel o cenas románticas.
+                </p>
+                <button
+                  onClick={() => setIsAddingGift(true)}
+                  className="mt-6 text-rose-500 font-bold hover:underline"
+                >
+                  Crear mi primer regalo
+                </button>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Add Gift Modal */}
+      <AnimatePresence>
+        {isAddingGift && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-[40px] w-full max-w-lg overflow-hidden shadow-2xl"
+            >
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center text-rose-500">
+                    <Plus className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-2xl font-serif font-bold text-slate-800">Nuevo Regalo</h3>
+                </div>
+                <button onClick={() => setIsAddingGift(false)} className="p-2 hover:bg-slate-50 rounded-full transition-colors">
+                  <Plus className="w-6 h-6 text-slate-400 rotate-45" />
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-8 space-y-12">
-                {!itinerary ? (
-                  <form onSubmit={generateItinerary} className="max-w-xl mx-auto space-y-8 py-12">
-                    <div className="space-y-4">
-                      <label className="text-sm font-bold text-slate-400 uppercase tracking-widest ml-1">¿A dónde queréis ir?</label>
-                      <div className="relative">
-                        <MapPin className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-rose-500" />
-                        <input 
-                          type="text"
-                          required
-                          placeholder="Ej: Bali, Indonesia"
-                          className="w-full bg-slate-50 border border-slate-100 rounded-3xl pl-16 pr-8 py-5 text-lg outline-none focus:ring-2 focus:ring-rose-500 transition-all font-medium"
-                          value={planningParams.destination}
-                          onChange={e => setPlanningParams({...planningParams, destination: e.target.value})}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-6">
-                      <div className="space-y-4">
-                        <label className="text-sm font-bold text-slate-400 uppercase tracking-widest ml-1">Duración (Días)</label>
-                        <input 
-                          type="number"
-                          min="1"
-                          max="30"
-                          className="w-full bg-slate-50 border border-slate-100 rounded-3xl px-8 py-5 text-lg outline-none focus:ring-2 focus:ring-rose-500 transition-all font-medium"
-                          value={planningParams.days}
-                          onChange={e => setPlanningParams({...planningParams, days: parseInt(e.target.value)})}
-                        />
-                      </div>
-                      <div className="space-y-4">
-                        <label className="text-sm font-bold text-slate-400 uppercase tracking-widest ml-1">Estilo de Viaje</label>
-                        <select 
-                          className="w-full bg-slate-50 border border-slate-100 rounded-3xl px-8 py-5 text-lg outline-none focus:ring-2 focus:ring-rose-500 transition-all font-medium appearance-none"
-                          value={planningParams.style}
-                          onChange={e => setPlanningParams({...planningParams, style: e.target.value})}
-                        >
-                          <option>Romántico</option>
-                          <option>Aventura</option>
-                          <option>Relax / Playa</option>
-                          <option>Cultural</option>
-                          <option>Lujo</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <button 
-                      type="submit"
-                      disabled={planningLoading}
-                      className="w-full bg-slate-900 text-white font-bold py-6 rounded-[32px] hover:bg-slate-800 transition-all shadow-2xl shadow-slate-900/20 flex items-center justify-center gap-3 text-lg disabled:opacity-50"
+              <form onSubmit={handleAddGift} className="p-8 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Título</label>
+                    <input
+                      type="text"
+                      required
+                      value={newGift.title}
+                      onChange={e => setNewGift({ ...newGift, title: e.target.value })}
+                      placeholder="Ej: 10.000 Kms de Vuelo"
+                      className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Categoría</label>
+                    <select
+                      value={newGift.category}
+                      onChange={e => setNewGift({ ...newGift, category: e.target.value as Regalo['category'] })}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all appearance-none"
                     >
-                      {planningLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Sparkles className="w-6 h-6" />}
-                      {planningLoading ? 'Generando Itinerario...' : 'Crear mi Itinerario'}
-                    </button>
-                  </form>
-                ) : (
-                  <div className="space-y-12">
-                    <header className="text-center space-y-4">
-                      <h4 className="text-4xl font-serif font-bold text-slate-800">{itinerary.title}</h4>
-                      <p className="text-slate-500 text-lg max-w-2xl mx-auto leading-relaxed">{itinerary.overview}</p>
-                      <button 
-                        onClick={() => setItinerary(null)}
-                        className="text-rose-500 font-bold text-sm hover:underline"
-                      >
-                        Crear otro itinerario
-                      </button>
-                    </header>
-
-                    <div className="space-y-8">
-                      {itinerary.days.map((day: any, idx: number) => (
-                        <motion.div 
-                          key={idx}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: idx * 0.1 }}
-                          className="flex gap-8"
-                        >
-                          <div className="flex flex-col items-center">
-                            <div className="w-12 h-12 bg-rose-500 text-white rounded-2xl flex items-center justify-center font-bold text-xl shadow-lg shadow-rose-500/20">
-                              {day.day}
-                            </div>
-                            <div className="flex-1 w-0.5 bg-slate-100 my-4" />
-                          </div>
-                          <div className="flex-1 space-y-6 pb-12">
-                            <h5 className="text-2xl font-serif font-bold text-slate-800">{day.title}</h5>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                              <div className="space-y-4">
-                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Actividades</p>
-                                <ul className="space-y-3">
-                                  {day.activities.map((act: string, i: number) => (
-                                    <li key={i} className="flex items-start gap-3 text-slate-600">
-                                      <div className="w-1.5 h-1.5 bg-rose-400 rounded-full mt-2 flex-shrink-0" />
-                                      {act}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                              {day.tips && (
-                                <div className="bg-indigo-50/50 p-6 rounded-3xl space-y-4 border border-indigo-100/50">
-                                  <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                                    <Sparkles className="w-3 h-3" /> Tips Románticos
-                                  </p>
-                                  <ul className="space-y-3">
-                                    {day.tips.map((tip: string, i: number) => (
-                                      <li key={i} className="text-sm text-indigo-600 font-medium italic">
-                                        "{tip}"
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </motion.div>
+                      {categories.map(c => (
+                        <option key={c.id} value={c.id}>{c.label}</option>
                       ))}
-                    </div>
+                    </select>
+                  </div>
+                </div>
 
-                    <div className="bg-slate-900 rounded-[40px] p-12 text-center space-y-6 text-white">
-                      <Heart className="w-12 h-12 text-rose-500 mx-auto fill-rose-500" />
-                      <h5 className="text-3xl font-serif font-bold">¿Listos para reservar?</h5>
-                      <p className="text-slate-400 max-w-xl mx-auto">
-                        Guarda este itinerario y empieza a buscar los mejores vuelos para vuestra aventura.
-                      </p>
-                      <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-                        <button 
-                          onClick={() => {
-                            setShowPlanner(false);
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                          }}
-                          className="bg-white text-slate-900 font-bold px-8 py-4 rounded-2xl hover:bg-slate-50 transition-all"
-                        >
-                          Buscar Vuelos
-                        </button>
-                        <button className="bg-white/10 text-white font-bold px-8 py-4 rounded-2xl hover:bg-white/20 transition-all border border-white/10">
-                          Descargar PDF
-                        </button>
-                      </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Monto Objetivo (ARS)</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      value={newGift.targetAmount || ''}
+                      onChange={e => setNewGift({ ...newGift, targetAmount: Number(e.target.value) })}
+                      placeholder="0"
+                      className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-12 pr-5 py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Descripción (Opcional)</label>
+                  <textarea
+                    value={newGift.description}
+                    onChange={e => setNewGift({ ...newGift, description: e.target.value })}
+                    placeholder="Contale a tus invitados por qué este regalo es especial..."
+                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all min-h-[100px] resize-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">URL de Imagen (Opcional)</label>
+                  <div className="relative">
+                    <ImageIcon className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                    <input
+                      type="url"
+                      value={newGift.imageUrl}
+                      onChange={e => setNewGift({ ...newGift, imageUrl: e.target.value })}
+                      placeholder="https://..."
+                      className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-12 pr-5 py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-4 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingGift(false)}
+                    className="flex-1 py-4 rounded-2xl font-bold text-slate-400 hover:bg-slate-50 transition-all"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="flex-1 py-4 bg-rose-500 text-white font-bold rounded-2xl hover:bg-rose-600 transition-all shadow-xl shadow-rose-500/20 disabled:opacity-50"
+                  >
+                    {loading ? 'Guardando...' : 'Crear Regalo'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Fragment Trip Modal */}
+      <AnimatePresence>
+        {isFragmenting && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-[40px] w-full max-w-lg overflow-hidden shadow-2xl"
+            >
+              <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-blue-50/50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center text-white">
+                    <Scissors className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-2xl font-serif font-bold text-slate-800">Fragmentar Viaje</h3>
+                </div>
+                <button onClick={() => setIsFragmenting(false)} className="p-2 hover:bg-white rounded-full transition-colors">
+                  <Plus className="w-6 h-6 text-slate-400 rotate-45" />
+                </button>
+              </div>
+
+              <form onSubmit={handleFragmentTrip} className="p-8 space-y-6">
+                <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex gap-3">
+                  <Info className="w-5 h-5 text-blue-500 shrink-0" />
+                  <p className="text-xs text-blue-700 leading-relaxed">
+                    Ingresa el costo total que encontraste en Turismocity y divídelo en fragmentos para que sea más fácil de regalar.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Monto Total del Viaje (ARS)</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      value={fragmentForm.totalAmount || ''}
+                      onChange={e => setFragmentForm({ ...fragmentForm, totalAmount: Number(e.target.value) })}
+                      placeholder="Ej: 1.500.000"
+                      className="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-12 pr-5 py-4 outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Nombre del Fragmento</label>
+                    <input
+                      type="text"
+                      required
+                      value={fragmentForm.fragmentName}
+                      onChange={e => setFragmentForm({ ...fragmentForm, fragmentName: e.target.value })}
+                      placeholder="Ej: 10.000 Kms de Vuelo"
+                      className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Cantidad de Fragmentos</label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      max="50"
+                      value={fragmentForm.fragmentCount}
+                      onChange={e => setFragmentForm({ ...fragmentForm, fragmentCount: Number(e.target.value) })}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Categoría</label>
+                  <select
+                    value={fragmentForm.category}
+                    onChange={e => setFragmentForm({ ...fragmentForm, category: e.target.value as Regalo['category'] })}
+                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-blue-500 transition-all appearance-none"
+                  >
+                    {categories.map(c => (
+                      <option key={c.id} value={c.id}>{c.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {fragmentForm.totalAmount > 0 && fragmentForm.fragmentCount > 0 && (
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
+                    <div className="text-xs text-slate-500">Cada fragmento costará:</div>
+                    <div className="text-lg font-bold text-blue-600">
+                      ${Math.round(fragmentForm.totalAmount / fragmentForm.fragmentCount).toLocaleString()}
                     </div>
                   </div>
                 )}
-              </div>
+
+                <div className="flex gap-4 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setIsFragmenting(false)}
+                    className="flex-1 py-4 rounded-2xl font-bold text-slate-400 hover:bg-slate-50 transition-all"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="flex-1 py-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {loading ? 'Procesando...' : (
+                      <>
+                        Fragmentar <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}
@@ -736,4 +708,3 @@ export const Honeymoon: React.FC = () => {
     </div>
   );
 };
-

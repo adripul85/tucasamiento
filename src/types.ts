@@ -96,6 +96,30 @@ export interface WeddingWebsite {
   }[];
 }
 
+export interface Regalo {
+  id: string;
+  weddingId: string;
+  title: string;
+  description?: string;
+  targetAmount: number;
+  collectedAmount: number;
+  imageUrl?: string;
+  category: 'flight' | 'hotel' | 'experience' | 'other';
+  completed: boolean;
+  order: number;
+}
+
+export interface Contribucion {
+  id: string;
+  weddingId: string;
+  giftId: string;
+  guestName: string;
+  amount: number;
+  message?: string;
+  date: string;
+  paymentId?: string;
+}
+
 export interface UserProfile {
   uid: string;
   displayName: string;

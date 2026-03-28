@@ -24,7 +24,8 @@
         "name": { "type": "string", "description": "Guest name." },
         "email": { "type": "string", "format": "email", "description": "Guest email." },
         "status": { "type": "string", "enum": ["invited", "confirmed", "declined"], "description": "RSVP status." },
-        "plusOne": { "type": "boolean", "description": "Whether the guest has a plus one." }
+        "plusOne": { "type": "boolean", "description": "Whether the guest has a plus one." },
+        "dietaryRestrictions": { "type": "string", "description": "Guest dietary restrictions." }
       },
       "required": ["weddingId", "name", "status"]
     },
@@ -128,6 +129,38 @@
         "theme": { "type": "object", "description": "Theme settings." }
       },
       "required": ["weddingId", "templateId", "published"]
+    },
+    "Regalo": {
+      "title": "Regalo",
+      "description": "A gift item in the honeymoon list.",
+      "type": "object",
+      "properties": {
+        "weddingId": { "type": "string", "description": "Reference to the wedding." },
+        "title": { "type": "string", "description": "Gift title." },
+        "description": { "type": "string", "description": "Gift details." },
+        "targetAmount": { "type": "number", "description": "Total amount needed." },
+        "collectedAmount": { "type": "number", "description": "Amount already collected." },
+        "imageUrl": { "type": "string", "format": "uri", "description": "Gift image URL." },
+        "category": { "type": "string", "enum": ["flight", "hotel", "experience", "other"], "description": "Gift category." },
+        "completed": { "type": "boolean", "description": "Whether the goal is reached." },
+        "order": { "type": "number", "description": "Display order." }
+      },
+      "required": ["weddingId", "title", "targetAmount", "collectedAmount", "category", "completed", "order"]
+    },
+    "Contribucion": {
+      "title": "Contribucion",
+      "description": "A contribution from a guest to a gift.",
+      "type": "object",
+      "properties": {
+        "weddingId": { "type": "string", "description": "Reference to the wedding." },
+        "giftId": { "type": "string", "description": "Reference to the gift." },
+        "guestName": { "type": "string", "description": "Name of the contributor." },
+        "amount": { "type": "number", "description": "Amount contributed." },
+        "message": { "type": "string", "description": "Message from the guest." },
+        "date": { "type": "string", "format": "date-time", "description": "Contribution date." },
+        "paymentId": { "type": "string", "description": "Mercado Pago payment reference." }
+      },
+      "required": ["weddingId", "giftId", "guestName", "amount", "date"]
     }
   },
   "firestore": {
@@ -158,6 +191,14 @@
     "/weddings/{weddingId}/favoriteVendors/{favoriteVendorId}": {
       "schema": "FavoriteVendor",
       "description": "Favorite vendors for a wedding."
+    },
+    "/weddings/{weddingId}/regalos/{giftId}": {
+      "schema": "Regalo",
+      "description": "Honeymoon gift list."
+    },
+    "/weddings/{weddingId}/contribuciones/{contributionId}": {
+      "schema": "Contribucion",
+      "description": "Contributions to honeymoon gifts."
     },
     "/posts/{postId}": {
       "schema": "Post",

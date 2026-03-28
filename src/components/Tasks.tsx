@@ -567,87 +567,97 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                   </div>
 
                   <div className="space-y-4">
-                    {timeframeTasks.map((task: Task) => (
-                      <motion.div 
-                        key={task.id}
-                        layout
-                        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                        animate={{ 
-                          opacity: task.completed ? 0.6 : 1, 
-                          scale: 1, 
-                          y: 0,
-                          backgroundColor: task.completed ? '#f8fafc' : '#ffffff'
-                        }}
-                        exit={{ opacity: 0, scale: 0.9 }}
-                        whileHover={{ y: -2 }}
-                        onClick={() => setSelectedTask(task)}
-                        className={`rounded-2xl md:rounded-3xl border border-slate-100 shadow-sm flex items-stretch overflow-hidden transition-all group cursor-pointer ${
-                          task.completed ? '' : 'hover:border-rose-200 hover:shadow-md'
-                        }`}
-                      >
-                        {/* Priority Indicator Bar */}
-                        <div className={`w-1.5 md:w-2.5 transition-all duration-500 ${
-                          task.priority === 'high' ? 'bg-rose-500 shadow-[4px_0_15px_rgba(244,63,94,0.4)]' :
-                          task.priority === 'medium' ? 'bg-amber-500 shadow-[4px_0_15px_rgba(245,158,11,0.4)]' :
-                          'bg-emerald-500 shadow-[4px_0_15px_rgba(16,185,129,0.4)]'
-                        }`} />
+                    <AnimatePresence initial={false}>
+                      {timeframeTasks.map((task: Task) => (
+                        <motion.div 
+                          key={task.id}
+                          layout
+                          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                          animate={{ 
+                            opacity: task.completed ? 0.6 : 1, 
+                            scale: 1, 
+                            y: 0,
+                            backgroundColor: task.completed ? '#f8fafc' : '#ffffff',
+                            borderColor: task.completed ? '#f1f5f9' : '#f1f5f9'
+                          }}
+                          exit={{ opacity: 0, scale: 0.9, y: -20 }}
+                          whileHover={task.completed ? {} : { y: -4, shadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)" }}
+                          onClick={() => setSelectedTask(task)}
+                          className={`rounded-2xl md:rounded-3xl border border-slate-100 shadow-sm flex items-stretch overflow-hidden transition-all group cursor-pointer ${
+                            task.completed ? 'grayscale-[0.5]' : 'hover:border-rose-200'
+                          }`}
+                        >
+                          {/* Priority Indicator Bar */}
+                          <div className={`w-1.5 md:w-2.5 transition-all duration-500 ${
+                            task.completed ? 'bg-slate-200' :
+                            task.priority === 'high' ? 'bg-rose-500 shadow-[4px_0_15px_rgba(244,63,94,0.4)]' :
+                            task.priority === 'medium' ? 'bg-amber-500 shadow-[4px_0_15px_rgba(245,158,11,0.4)]' :
+                            'bg-emerald-500 shadow-[4px_0_15px_rgba(16,185,129,0.4)]'
+                          }`} />
 
-                        <div className="flex-1 p-4 md:p-6 flex items-start justify-between gap-2">
-                          <div className="flex items-start gap-3 md:gap-4 flex-1 min-w-0">
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleTask(task);
-                              }} 
-                              className={`mt-1 transition-all duration-300 hover:scale-110 active:scale-95 flex-shrink-0 ${task.completed ? 'text-emerald-500' : 'text-slate-300 hover:text-rose-500'}`}
-                            >
-                              {task.completed ? <CheckCircle2 className="w-6 h-6 md:w-7 md:h-7" /> : <Circle className="w-6 h-6 md:w-7 md:h-7" />}
-                            </button>
-                            <div className="flex-1 space-y-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <h3 className={`font-bold text-slate-800 text-sm md:text-lg transition-all truncate ${task.completed ? 'line-through decoration-slate-400 text-slate-400' : ''}`}>
-                                  {task.title}
-                                </h3>
-                                {task.category && (
-                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[8px] md:text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
-                                    {task.category}
-                                  </span>
+                          <div className="flex-1 p-4 md:p-6 flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-3 md:gap-4 flex-1 min-w-0">
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleTask(task);
+                                }} 
+                                className={`mt-1 transition-all duration-300 hover:scale-125 active:scale-95 flex-shrink-0 ${task.completed ? 'text-emerald-500' : 'text-slate-300 hover:text-rose-500'}`}
+                              >
+                                {task.completed ? <CheckCircle2 className="w-6 h-6 md:w-7 md:h-7" /> : <Circle className="w-6 h-6 md:w-7 md:h-7" />}
+                              </button>
+                              <div className="flex-1 space-y-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h3 className={`font-bold text-sm md:text-lg transition-all truncate ${
+                                    task.completed 
+                                      ? 'line-through decoration-slate-300 text-slate-400' 
+                                      : 'text-slate-800'
+                                  }`}>
+                                    {task.title}
+                                  </h3>
+                                  {task.category && (
+                                    <span className={`px-2 py-0.5 rounded-full text-[8px] md:text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-colors ${
+                                      task.completed ? 'bg-slate-100 text-slate-400' : 'bg-slate-100 text-slate-500'
+                                    }`}>
+                                      {task.category}
+                                    </span>
+                                  )}
+                                </div>
+                                
+                                {task.description && !task.completed && (
+                                  <p className="text-slate-500 text-xs md:text-sm leading-relaxed line-clamp-1">{task.description}</p>
+                                )}
+
+                                {task.dueDate && (
+                                  <div className="flex items-center gap-3 mt-1 md:mt-2">
+                                    <div className={`flex items-center gap-1.5 text-[10px] md:text-xs font-medium ${
+                                      !task.completed && new Date(task.dueDate) < new Date() ? 'text-rose-500' : 'text-slate-400'
+                                    }`}>
+                                      <Calendar className="w-3 h-3 md:w-3.5 md:h-3.5" />
+                                      {format(new Date(task.dueDate), "d 'de' MMM", { locale: es })}
+                                    </div>
+                                  </div>
                                 )}
                               </div>
-                              
-                              {task.description && !task.completed && (
-                                <p className="text-slate-500 text-xs md:text-sm leading-relaxed line-clamp-1">{task.description}</p>
-                              )}
-
-                              {task.dueDate && (
-                                <div className="flex items-center gap-3 mt-1 md:mt-2">
-                                  <div className={`flex items-center gap-1.5 text-[10px] md:text-xs font-medium ${
-                                    !task.completed && new Date(task.dueDate) < new Date() ? 'text-rose-500' : 'text-slate-400'
-                                  }`}>
-                                    <Calendar className="w-3 h-3 md:w-3.5 md:h-3.5" />
-                                    {format(new Date(task.dueDate), "d 'de' MMM", { locale: es })}
-                                  </div>
-                                </div>
-                              )}
+                            </div>
+                            <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
+                              <div className={`p-1.5 md:p-2 transition-colors ${task.completed ? 'text-slate-300' : 'text-slate-300 group-hover:text-rose-500'}`}>
+                                <Info className="w-4 h-4 md:w-5 md:h-5" />
+                              </div>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteTask(task.id);
+                                }}
+                                className="p-1.5 md:p-2 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all md:opacity-0 md:group-hover:opacity-100"
+                              >
+                                <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
+                              </button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
-                            <div className="p-1.5 md:p-2 text-slate-300 group-hover:text-rose-500 transition-colors">
-                              <Info className="w-4 h-4 md:w-5 md:h-5" />
-                            </div>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteTask(task.id);
-                              }}
-                              className="p-1.5 md:p-2 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all md:opacity-0 md:group-hover:opacity-100"
-                            >
-                              <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
-                            </button>
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
                   </div>
                 </div>
               );
