@@ -12,7 +12,7 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Travelpayouts API Management
+// Travelpayouts API Management
  const TRAVELPAYOUTS_TOKEN = process.env.TRAVELPAYOUTS_TOKEN;
 const TRAVELPAYOUTS_MARKER = process.env.TRAVELPAYOUTS_MARKER;
   // Aviationstack API Management
@@ -22,9 +22,6 @@ if (!TRAVELPAYOUTS_TOKEN || !TRAVELPAYOUTS_MARKER || !AVIATIONSTACK_KEY) {
   console.error("❌ Faltan variables de entorno. Copiá .env.example a .env.local y completá los valores.");
   process.exit(1);
 }
-
-  
- 
 
   // API Routes
   app.get("/api/flights/cities", async (req, res) => {
