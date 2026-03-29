@@ -8,10 +8,14 @@ import {
   Plus, Trash2, PieChart as PieChartIcon, DollarSign, TrendingUp, AlertCircle, 
   ChevronRight, Download, Printer, Church, Utensils, Music, Mail, Gift, 
   Flower2, Camera, Bus, Gem, User, Sparkles, Plane, MoreHorizontal, PiggyBank, Coins,
-  Search, ArrowUpDown, Calendar, CreditCard, History, Zap
+  Search, ArrowUpDown, Calendar, CreditCard, History, Zap, BrainCircuit, Loader2, XCircle
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+import { GoogleGenAI, Type } from "@google/genai";
 
 const COLORS = ['#f43f5e', '#ec4899', '#d946ef', '#a855f7', '#8b5cf6', '#6366f1', '#3b82f6', '#0ea5e9', '#f59e0b', '#10b981', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6'];
 
@@ -126,6 +130,9 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
   const [paymentSearch, setPaymentSearch] = useState('');
   const [paymentSort, setPaymentSort] = useState<{ field: keyof Payment; direction: 'asc' | 'desc' }>({ field: 'date', direction: 'desc' });
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiRecommendations, setAiRecommendations] = useState<string | null>(null);
+  const [showAiModal, setShowAiModal] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, `weddings/${weddingId}/budgetItems`));
@@ -372,6 +379,74 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
     return 'bg-emerald-500';
   };
 
+  const exportToPDF = () => {
+    const doc = new jsPDF();
+    doc.text('Presupuesto de Boda - Tu Casamiento', 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Presupuesto Objetivo: $${targetBudget.toLocaleString()}`, 14, 22);
+    doc.text(`Total Estimado: $${totalEstimated.toLocaleString()}`, 14, 27);
+    doc.text(`Total Pagado: $${totalPaid.toLocaleString()}`, 14, 32);
+
+    const tableData = items.map(item => [
+      item.name,
+      item.category,
+      `$${item.estimated.toLocaleString()}`,
+      `$${item.paid.toLocaleString()}`,
+      `$${(item.estimated - item.paid).toLocaleString()}`
+    ]);
+
+    (doc as any).autoTable({
+      head: [['Concepto', 'Categoría', 'Estimado', 'Pagado', 'Pendiente']],
+      body: tableData,
+      startY: 40,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [244, 63, 94] }
+    });
+
+    doc.save('presupuesto-boda.pdf');
+  };
+
+  const exportToExcel = () => {
+    const data = items.map(item => ({
+      Concepto: item.name,
+      Categoría: item.category,
+      Estimado: item.estimated,
+      Pagado: item.paid,
+      Pendiente: item.estimated - item.paid
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Presupuesto');
+    XLSX.writeFile(workbook, 'presupuesto-boda.xlsx');
+  };
+
+  const getAiAdvice = async () => {
+    setIsAiLoading(true);
+    setShowAiModal(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Actúa como un experto planificador de bodas. Analiza mi presupuesto actual y dame consejos para optimizarlo.
+        Presupuesto Objetivo: $${targetBudget}
+        Total Estimado Actual: $${totalEstimated}
+        Total Pagado: $${totalPaid}
+        
+        Gastos actuales:
+        ${items.map(i => `- ${i.name} (${i.category}): $${i.estimated}`).join('\n')}
+        
+        Dame 3-5 consejos específicos, realistas y accionables para ahorrar o redistribuir mejor el dinero en base a estos datos. Responde en español y con un tono amable y profesional.`,
+      });
+      setAiRecommendations(response.text);
+    } catch (error) {
+      console.error('AI Error:', error);
+      setAiRecommendations('Lo siento, no pude generar recomendaciones en este momento. Por favor, intenta más tarde.');
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
       {/* Top Navigation */}
@@ -397,13 +472,28 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
           </button>
         </div>
         <div className="flex items-center gap-4">
-          <button 
-            onClick={() => alert('Descargando presupuesto...')}
-            className="flex items-center gap-2 text-slate-500 hover:text-slate-800 text-sm font-bold transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            Descargar
-          </button>
+          <div className="relative group">
+            <button 
+              className="flex items-center gap-2 text-slate-500 hover:text-slate-800 text-sm font-bold transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Descargar
+            </button>
+            <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+              <button 
+                onClick={exportToPDF}
+                className="w-full px-4 py-2 text-left text-sm text-slate-600 hover:bg-slate-50 hover:text-rose-500 transition-colors"
+              >
+                Descargar PDF
+              </button>
+              <button 
+                onClick={exportToExcel}
+                className="w-full px-4 py-2 text-left text-sm text-slate-600 hover:bg-slate-50 hover:text-rose-500 transition-colors"
+              >
+                Descargar Excel
+              </button>
+            </div>
+          </div>
           <button 
             onClick={() => window.print()}
             className="flex items-center gap-2 text-slate-500 hover:text-slate-800 text-sm font-bold transition-colors"
@@ -450,13 +540,22 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
               <div className="w-10 hidden md:block" /> {/* Spacer */}
               <h2 className="text-3xl font-serif font-bold text-slate-800 text-center">Mi presupuesto</h2>
-              <button 
-                onClick={loadSuggestions}
-                className="flex items-center gap-2 px-4 py-2 bg-rose-50 text-rose-600 rounded-xl hover:bg-rose-100 transition-all text-xs font-bold"
-              >
-                <Sparkles className="w-4 h-4" />
-                Cargar sugerencias
-              </button>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={getAiAdvice}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-all text-xs font-bold"
+                >
+                  <BrainCircuit className="w-4 h-4" />
+                  Consejos IA
+                </button>
+                <button 
+                  onClick={loadSuggestions}
+                  className="flex items-center gap-2 px-4 py-2 bg-rose-50 text-rose-600 rounded-xl hover:bg-rose-100 transition-all text-xs font-bold"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Cargar sugerencias
+                </button>
+              </div>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative">
@@ -1179,6 +1278,59 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
         confirmText="Eliminar"
         cancelText="Cancelar"
       />
+
+      {/* AI Recommendations Modal */}
+      <AnimatePresence>
+        {showAiModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-white rounded-[40px] w-full max-w-2xl overflow-hidden shadow-2xl"
+            >
+              <div className="p-8 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600">
+                      <BrainCircuit className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-serif font-bold text-slate-800">Recomendaciones IA</h3>
+                      <p className="text-sm text-slate-500">Análisis inteligente de tu presupuesto</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowAiModal(false)} className="p-2 hover:bg-slate-50 rounded-full transition-colors">
+                    <XCircle className="w-6 h-6 text-slate-300" />
+                  </button>
+                </div>
+
+                <div className="p-8 bg-slate-50 rounded-[32px] min-h-[300px] flex flex-col">
+                  {isAiLoading ? (
+                    <div className="flex-1 flex flex-col items-center justify-center space-y-4 text-slate-400">
+                      <Loader2 className="w-12 h-12 animate-spin text-indigo-500" />
+                      <p className="font-medium animate-pulse">Analizando tus gastos...</p>
+                    </div>
+                  ) : (
+                    <div className="prose prose-slate max-w-none">
+                      <div className="whitespace-pre-wrap text-slate-700 leading-relaxed">
+                        {aiRecommendations}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <button 
+                  onClick={() => setShowAiModal(false)}
+                  className="w-full py-4 bg-slate-800 text-white font-bold rounded-2xl hover:bg-slate-900 transition-all"
+                >
+                  Entendido
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

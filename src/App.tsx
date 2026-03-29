@@ -16,9 +16,10 @@ import { Blog } from './components/Blog';
 import { Community } from './components/Community';
 import { FavoritesList } from './components/FavoritesList';
 import { WeddingWebsiteView } from './components/WeddingWebsiteView';
+import { SeatingChart } from './components/SeatingChart';
 import { Auth } from './components/Auth';
 import { ProDashboard } from './components/ProDashboard';
-import { Heart, Calendar, MapPin, Settings, X, LogOut, Star, ChevronRight, MessageSquare, User as UserIcon, BookOpen, CheckSquare, Users, Calculator, ArrowRight, Share2, Utensils, Music, Globe, CheckCircle2 } from 'lucide-react';
+import { Heart, Calendar, MapPin, Settings, X, LogOut, Star, ChevronRight, MessageSquare, User as UserIcon, BookOpen, CheckSquare, Users, Calculator, ArrowRight, Share2, Utensils, Music, Globe, CheckCircle2, Layout as LayoutIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getMessagingSafe, getToken, onMessage } from './firebase';
 
@@ -85,6 +86,59 @@ async function testConnection() {
     if(error instanceof Error && error.message.includes('the client is offline')) {
       console.error("Please check your Firebase configuration. Ensure Firestore is enabled in the console.");
     }
+  }
+}
+
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: any }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      let errorMessage = "Algo salió mal.";
+      let details = "";
+      
+      try {
+        const parsed = JSON.parse(this.state.error.message);
+        if (parsed.error) {
+          errorMessage = "Error de Permisos o Firestore";
+          details = `${parsed.operationType.toUpperCase()} en ${parsed.path}: ${parsed.error}`;
+        }
+      } catch (e) {
+        errorMessage = this.state.error.message || "Error desconocido";
+      }
+
+      return (
+        <div className="min-h-screen bg-rose-50 flex items-center justify-center p-6 text-center">
+          <div className="bg-white p-10 rounded-[40px] shadow-2xl max-w-lg w-full space-y-6">
+            <div className="w-20 h-20 bg-rose-100 rounded-full flex items-center justify-center mx-auto text-rose-500">
+              <X className="w-10 h-10" />
+            </div>
+            <h2 className="text-3xl font-serif font-bold text-slate-800">{errorMessage}</h2>
+            <p className="text-slate-500">{details || "Por favor, intenta recargar la página o contacta a soporte."}</p>
+            <div className="bg-slate-50 p-4 rounded-2xl text-left overflow-auto max-h-40">
+              <pre className="text-[10px] text-slate-400 font-mono">
+                {JSON.stringify(this.state.error, null, 2)}
+              </pre>
+            </div>
+            <button 
+              onClick={() => window.location.reload()}
+              className="w-full py-4 bg-rose-500 text-white font-bold rounded-2xl hover:bg-rose-600 transition-all shadow-lg shadow-rose-100"
+            >
+              Recargar Aplicación
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
   }
 }
 
@@ -465,11 +519,20 @@ const Dashboard: React.FC<{ wedding: Wedding; setActiveTab: (tab: string) => voi
     vendors: 0,
     tasks: { completed: 0, total: 0 },
     guests: { confirmed: 0, total: 0 },
-    budget: { spent: 0, total: 0 }
+    budget: { spent: 0, total: 0 },
+    tables: 0
   });
 
   useEffect(() => {
     if (!wedding.id) return;
+
+    // Fetch Tables
+    const tablesUnsubscribe = onSnapshot(
+      collection(db, `weddings/${wedding.id}/tables`),
+      (snapshot) => {
+        setStats(prev => ({ ...prev, tables: snapshot.size }));
+      }
+    );
 
     // Fetch Vendors
     const vendorsUnsubscribe = onSnapshot(
@@ -594,7 +657,7 @@ const Dashboard: React.FC<{ wedding: Wedding; setActiveTab: (tab: string) => voi
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <motion.button
               whileHover={{ y: -4 }}
               onClick={() => setActiveTab('vendors')}
@@ -629,6 +692,18 @@ const Dashboard: React.FC<{ wedding: Wedding; setActiveTab: (tab: string) => voi
               </div>
               <div className="text-2xl font-bold text-slate-800">{stats.guests.confirmed}/{stats.guests.total}</div>
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Invitados</div>
+            </motion.button>
+
+            <motion.button
+              whileHover={{ y: -4 }}
+              onClick={() => setActiveTab('seating')}
+              className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm text-left group"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-purple-50 flex items-center justify-center text-purple-500 mb-4 group-hover:scale-110 transition-transform">
+                <LayoutIcon className="w-6 h-6" />
+              </div>
+              <div className="text-2xl font-bold text-slate-800">{stats.tables}</div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mesas</div>
             </motion.button>
 
             <motion.button
@@ -960,13 +1035,14 @@ const WeddingManager: React.FC<{ user: User }> = ({ user }) => {
     switch (activeTab) {
       case 'home': return <Dashboard wedding={wedding} setActiveTab={setActiveTab} />;
       case 'guests': return <GuestList weddingId={wedding.id} />;
+      case 'seating': return <SeatingChart weddingId={wedding.id} />;
       case 'tasks': return <Tasks weddingId={wedding.id} />;
       case 'budget': return <Budget weddingId={wedding.id} />;
       case 'vendors': return <VendorSearch weddingId={wedding.id} onSelectVendor={setSelectedVendor} />;
       case 'favorites': return <FavoritesList weddingId={wedding.id} onSelectVendor={setSelectedVendor} />;
       case 'website': return <WebsiteBuilder wedding={wedding} />;
       case 'blog': return <Blog />;
-      case 'community': return <Community weddingId={wedding.id} />;
+      case 'community': return <Community />;
       case 'honeymoon': return <Honeymoon wedding={wedding} />;
       case 'rsvp': return <RSVPForm weddingId={wedding.id} />;
       default: return <Dashboard wedding={wedding} setActiveTab={setActiveTab} />;
@@ -1037,12 +1113,14 @@ export default function App() {
   }
 
   return (
-    <Auth onLoginPro={() => setUserType('vendor')}>
-      {(user) => (
-        userType === 'vendor' 
-          ? <ProDashboard user={user} onNavigate={(page) => console.log('Navigate to:', page)} />
-          : <WeddingManager user={user} />
-      )}
-    </Auth>
+    <ErrorBoundary>
+      <Auth onLoginPro={() => setUserType('vendor')}>
+        {(user) => (
+          userType === 'vendor' 
+            ? <ProDashboard user={user} onNavigate={(page) => console.log('Navigate to:', page)} />
+            : <WeddingManager user={user} />
+        )}
+      </Auth>
+    </ErrorBoundary>
   );
 }

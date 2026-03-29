@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { db, handleFirestoreError, OperationType } from '../App';
 import { collection, query, where, getDocs, updateDoc, doc, addDoc } from 'firebase/firestore';
+import { Guest } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Heart, Users, Utensils, MessageSquare, CheckCircle2, Search, Loader2, XCircle, Plus, ArrowLeft } from 'lucide-react';
 
@@ -22,6 +23,8 @@ export const RSVPForm: React.FC<RSVPFormProps> = ({ weddingId, inline }) => {
   const [attendeesCount, setAttendeesCount] = useState(1);
   const [dietaryRestrictions, setDietaryRestrictions] = useState('');
   const [message, setMessage] = useState('');
+  const [plusOne, setPlusOne] = useState(false);
+  const [plusOneName, setPlusOneName] = useState('');
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,8 +40,10 @@ export const RSVPForm: React.FC<RSVPFormProps> = ({ weddingId, inline }) => {
       const snapshot = await getDocs(q);
 
       if (!snapshot.empty) {
-        const guestData = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+        const guestData = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Guest;
         setFoundGuest(guestData);
+        setPlusOne(guestData.plusOne || false);
+        setPlusOneName(guestData.plusOneName || '');
         setStep('form');
       } else {
         setError('No pudimos encontrar tu nombre en la lista. Si crees que es un error, puedes registrarte como nuevo invitado.');
@@ -64,7 +69,8 @@ export const RSVPForm: React.FC<RSVPFormProps> = ({ weddingId, inline }) => {
           attendeesCount: status === 'confirmed' ? attendeesCount : 0,
           dietaryRestrictions,
           message,
-          plusOne: false,
+          plusOne,
+          plusOneName: plusOne ? plusOneName : '',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });
@@ -74,6 +80,8 @@ export const RSVPForm: React.FC<RSVPFormProps> = ({ weddingId, inline }) => {
           attendeesCount: status === 'confirmed' ? attendeesCount : 0,
           dietaryRestrictions,
           message,
+          plusOne,
+          plusOneName: plusOne ? plusOneName : '',
           updatedAt: new Date().toISOString()
         });
       }
@@ -273,6 +281,44 @@ export const RSVPForm: React.FC<RSVPFormProps> = ({ weddingId, inline }) => {
                       placeholder="Ej: Celíaco, Vegano, Alergia a los frutos secos..."
                       className="w-full bg-slate-50 border border-slate-100 rounded-3xl px-6 py-4 outline-none focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 transition-all min-h-[100px] resize-none"
                     />
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-2 text-sm font-bold text-slate-700 ml-1">
+                      <Plus className="w-4 h-4 text-rose-500" />
+                      ¿Vienes con acompañante?
+                    </label>
+                    <div className="flex flex-col gap-3">
+                      <label className="flex items-center gap-3 cursor-pointer group p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                        <div 
+                          onClick={() => setPlusOne(!plusOne)}
+                          className={`w-10 h-6 rounded-full transition-all relative ${plusOne ? 'bg-rose-500' : 'bg-slate-200'}`}
+                        >
+                          <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${plusOne ? 'left-5' : 'left-1'}`} />
+                        </div>
+                        <span className="text-sm font-medium text-slate-600">Sí, traigo un acompañante</span>
+                      </label>
+                      
+                      <AnimatePresence>
+                        {plusOne && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <input
+                              type="text"
+                              value={plusOneName}
+                              onChange={(e) => setPlusOneName(e.target.value)}
+                              placeholder="Nombre completo del acompañante..."
+                              className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 outline-none focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 transition-all"
+                              required={plusOne}
+                            />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   </div>
                 </motion.div>
               )}

@@ -16,9 +16,11 @@ export interface Guest {
   status: 'invited' | 'confirmed' | 'declined';
   group?: string;
   plusOne?: boolean;
+  plusOneName?: string;
   attendeesCount?: number;
   dietaryRestrictions?: string;
   message?: string;
+  color?: string;
 }
 
 export interface Task {

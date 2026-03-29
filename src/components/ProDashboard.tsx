@@ -24,7 +24,8 @@ import {
   Building2,
   X,
   Check,
-  Sparkles
+  Sparkles,
+  Menu
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -40,6 +41,7 @@ interface ProDashboardProps {
 
 export const ProDashboard: React.FC<ProDashboardProps> = ({ user, onNavigate }) => {
   const [activeTab, setActiveTab] = useState('overview');
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [vendor, setVendor] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -94,103 +96,169 @@ export const ProDashboard: React.FC<ProDashboardProps> = ({ user, onNavigate }) 
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
-      {/* Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-200">
-        <div className="p-6">
-          <div className="flex items-center gap-2 mb-8">
-            <Heart className="w-6 h-6 text-rose-500 fill-rose-500" />
-            <span className="text-xl font-serif font-bold text-slate-800">TuCasamiento</span>
-            <span className="text-rose-500 text-[9px] font-black uppercase tracking-widest bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100">Pro</span>
+    <div className="min-h-screen bg-slate-50">
+      {/* Top Navbar */}
+      <header className="sticky top-0 left-0 right-0 bg-white border-b border-slate-200 z-50">
+        <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="w-10 h-10 bg-rose-500 rounded-xl flex items-center justify-center">
+              <Heart className="text-white w-6 h-6 fill-white" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xl font-serif font-bold text-slate-800 leading-none">TuCasamiento</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-rose-500">Pro</span>
+            </div>
           </div>
 
-          <nav className="space-y-1">
-            <SidebarItem 
-              icon={<LayoutDashboard className="w-5 h-5" />} 
-              label="Panel General" 
+          {/* Desktop Nav Links */}
+          <nav className="hidden lg:flex items-center gap-1 px-4 flex-1 justify-center">
+            <NavTab 
+              icon={<LayoutDashboard className="w-4 h-4" />} 
+              label="Panel" 
               active={activeTab === 'overview'} 
               onClick={() => setActiveTab('overview')} 
             />
-            <SidebarItem 
-              icon={<User className="w-5 h-5" />} 
-              label="Mi Perfil" 
+            <NavTab 
+              icon={<User className="w-4 h-4" />} 
+              label="Perfil" 
               active={activeTab === 'profile'} 
               onClick={() => setActiveTab('profile')} 
             />
-            <SidebarItem 
-              icon={<ImageIcon className="w-5 h-5" />} 
+            <NavTab 
+              icon={<ImageIcon className="w-4 h-4" />} 
               label="Galería" 
               active={activeTab === 'gallery'} 
               onClick={() => setActiveTab('gallery')} 
             />
-            <SidebarItem 
-              icon={<MessageSquare className="w-5 h-5" />} 
+            <NavTab 
+              icon={<MessageSquare className="w-4 h-4" />} 
               label="Mensajes" 
               active={activeTab === 'messages'} 
               onClick={() => setActiveTab('messages')} 
               badge="3"
             />
-            <SidebarItem 
-              icon={<Calendar className="w-5 h-5" />} 
+            <NavTab 
+              icon={<Calendar className="w-4 h-4" />} 
               label="Calendario" 
               active={activeTab === 'calendar'} 
               onClick={() => setActiveTab('calendar')} 
             />
-            <SidebarItem 
-              icon={<Settings className="w-5 h-5" />} 
+            <NavTab 
+              icon={<Settings className="w-4 h-4" />} 
               label="Configuración" 
               active={activeTab === 'settings'} 
               onClick={() => setActiveTab('settings')} 
             />
           </nav>
+
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              onClick={() => window.location.href = '/'}
+              className="hidden md:flex items-center gap-2 px-4 py-2 text-slate-400 hover:text-rose-500 transition-colors text-sm font-medium"
+            >
+              <LogOut className="w-4 h-4" />
+              Salir
+            </button>
+            
+            {/* Mobile Menu Toggle */}
+            <button 
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="lg:hidden p-2 text-slate-500 hover:bg-slate-50 rounded-xl transition-all"
+            >
+              {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
 
-        <div className="mt-auto p-6 border-t border-slate-100">
-          <button 
-            onClick={() => window.location.href = '/'}
-            className="flex items-center gap-3 text-slate-500 hover:text-rose-500 transition-colors font-medium w-full"
-          >
-            <LogOut className="w-5 h-5" />
-            Cerrar Sesión
-          </button>
-        </div>
-      </aside>
+        {/* Mobile Menu Overlay */}
+        <AnimatePresence>
+          {isMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="lg:hidden bg-white border-t border-slate-100 overflow-hidden"
+            >
+              <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <MobileNavTab 
+                  icon={<LayoutDashboard className="w-5 h-5" />} 
+                  label="Panel" 
+                  active={activeTab === 'overview'} 
+                  onClick={() => { setActiveTab('overview'); setIsMenuOpen(false); }} 
+                />
+                <MobileNavTab 
+                  icon={<User className="w-5 h-5" />} 
+                  label="Perfil" 
+                  active={activeTab === 'profile'} 
+                  onClick={() => { setActiveTab('profile'); setIsMenuOpen(false); }} 
+                />
+                <MobileNavTab 
+                  icon={<ImageIcon className="w-5 h-5" />} 
+                  label="Galería" 
+                  active={activeTab === 'gallery'} 
+                  onClick={() => { setActiveTab('gallery'); setIsMenuOpen(false); }} 
+                />
+                <MobileNavTab 
+                  icon={<MessageSquare className="w-5 h-5" />} 
+                  label="Mensajes" 
+                  active={activeTab === 'messages'} 
+                  onClick={() => { setActiveTab('messages'); setIsMenuOpen(false); }} 
+                  badge="3"
+                />
+                <MobileNavTab 
+                  icon={<Calendar className="w-5 h-5" />} 
+                  label="Calendario" 
+                  active={activeTab === 'calendar'} 
+                  onClick={() => { setActiveTab('calendar'); setIsMenuOpen(false); }} 
+                />
+                <MobileNavTab 
+                  icon={<Settings className="w-5 h-5" />} 
+                  label="Configuración" 
+                  active={activeTab === 'settings'} 
+                  onClick={() => { setActiveTab('settings'); setIsMenuOpen(false); }} 
+                />
+                <button
+                  onClick={() => window.location.href = '/'}
+                  className="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-rose-500 transition-colors col-span-full border-t border-slate-50 mt-2 pt-4"
+                >
+                  <LogOut className="w-5 h-5" />
+                  <span className="text-sm">Cerrar Sesión</span>
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </header>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
-        {/* Header */}
-        <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
-          <div className="px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-4 md:hidden">
-               <Heart className="w-6 h-6 text-rose-500 fill-rose-500" />
-            </div>
-            
-            <div className="relative hidden sm:block w-96">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input 
-                type="text" 
-                placeholder="Buscar en el panel..." 
-                className="w-full bg-slate-50 border-none rounded-xl pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-rose-500/20 transition-all"
-              />
-            </div>
+      <main className="max-w-7xl mx-auto">
+        {/* Secondary Header (Search & Notifications) */}
+        <div className="px-6 py-4 flex items-center justify-between bg-white/50 backdrop-blur-sm border-b border-slate-100">
+          <div className="relative hidden sm:block w-96">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Buscar en el panel..." 
+              className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-rose-500/20 transition-all"
+            />
+          </div>
 
-            <div className="flex items-center gap-4">
-              <button className="relative p-2 text-slate-500 hover:bg-slate-50 rounded-xl transition-colors">
-                <Bell className="w-5 h-5" />
-                <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>
-              </button>
-              <div className="flex items-center gap-3 pl-4 border-l border-slate-100">
-                <div className="text-right hidden sm:block">
-                  <p className="text-sm font-bold text-slate-800">{vendorData.name}</p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Plan Premium</p>
-                </div>
-                <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center text-rose-500 font-bold">
-                  SC
-                </div>
+          <div className="flex items-center gap-4 ml-auto">
+            <button className="relative p-2 text-slate-500 hover:bg-white rounded-xl transition-colors border border-transparent hover:border-slate-200">
+              <Bell className="w-5 h-5" />
+              <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>
+            </button>
+            <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
+              <div className="text-right hidden sm:block">
+                <p className="text-sm font-bold text-slate-800">{vendorData.name}</p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Plan Premium</p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center text-rose-500 font-bold">
+                SC
               </div>
             </div>
           </div>
-        </header>
+        </div>
 
         <div className="p-6 md:p-10 space-y-10">
           {/* Welcome Section */}
@@ -463,21 +531,38 @@ export const ProDashboard: React.FC<ProDashboardProps> = ({ user, onNavigate }) 
   );
 };
 
-const SidebarItem: React.FC<{ icon: React.ReactNode; label: string; active?: boolean; onClick: () => void; badge?: string }> = ({ icon, label, active, onClick, badge }) => (
+const NavTab: React.FC<{ icon: React.ReactNode; label: string; active?: boolean; onClick: () => void; badge?: string }> = ({ icon, label, active, onClick, badge }) => (
   <button 
     onClick={onClick}
-    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${
+    className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all whitespace-nowrap ${
       active 
         ? 'bg-rose-50 text-rose-500 font-bold' 
         : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
     }`}
   >
-    <div className="flex items-center gap-3">
-      {icon}
-      <span className="text-sm">{label}</span>
-    </div>
+    {icon}
+    <span className="text-sm">{label}</span>
     {badge && (
-      <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+      <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1">
+        {badge}
+      </span>
+    )}
+  </button>
+);
+
+const MobileNavTab: React.FC<{ icon: React.ReactNode; label: string; active?: boolean; onClick: () => void; badge?: string }> = ({ icon, label, active, onClick, badge }) => (
+  <button 
+    onClick={onClick}
+    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+      active 
+        ? 'bg-rose-50 text-rose-500 font-bold' 
+        : 'text-slate-500 hover:bg-slate-50'
+    }`}
+  >
+    {icon}
+    <span className="text-sm">{label}</span>
+    {badge && (
+      <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-auto">
         {badge}
       </span>
     )}

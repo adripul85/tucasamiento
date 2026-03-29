@@ -25,7 +25,9 @@
         "email": { "type": "string", "format": "email", "description": "Guest email." },
         "status": { "type": "string", "enum": ["invited", "confirmed", "declined"], "description": "RSVP status." },
         "plusOne": { "type": "boolean", "description": "Whether the guest has a plus one." },
-        "dietaryRestrictions": { "type": "string", "description": "Guest dietary restrictions." }
+        "plusOneName": { "type": "string", "description": "Name of the guest's plus one." },
+        "dietaryRestrictions": { "type": "string", "description": "Guest dietary restrictions." },
+        "color": { "type": "string", "description": "Color assigned to the guest for the seating chart." }
       },
       "required": ["weddingId", "name", "status"]
     },
@@ -161,6 +163,20 @@
         "paymentId": { "type": "string", "description": "Mercado Pago payment reference." }
       },
       "required": ["weddingId", "giftId", "guestName", "amount", "date"]
+    },
+    "Table": {
+      "title": "Table",
+      "description": "A table in the seating chart.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Table name or number." },
+        "x": { "type": "number", "description": "X coordinate on the canvas." },
+        "y": { "type": "number", "description": "Y coordinate on the canvas." },
+        "type": { "type": "string", "enum": ["round", "rectangular"], "description": "Table shape." },
+        "capacity": { "type": "number", "description": "Seating capacity." },
+        "guestIds": { "type": "array", "items": { "type": "string" }, "description": "IDs of guests assigned to this table." }
+      },
+      "required": ["name", "x", "y", "type", "capacity", "guestIds"]
     }
   },
   "firestore": {
@@ -199,6 +215,10 @@
     "/weddings/{weddingId}/contribuciones/{contributionId}": {
       "schema": "Contribucion",
       "description": "Contributions to honeymoon gifts."
+    },
+    "/weddings/{weddingId}/tables/{tableId}": {
+      "schema": "Table",
+      "description": "Tables in the seating chart."
     },
     "/posts/{postId}": {
       "schema": "Post",

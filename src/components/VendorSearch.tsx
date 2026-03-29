@@ -30,8 +30,8 @@ const ChangeView = ({ center, zoom }: { center: [number, number], zoom: number }
 interface Vendor {
   id: string;
   name: string;
-  lat: number;
-  lon: number;
+  lat?: number;
+  lon?: number;
   address?: string;
   category: string;
   phone?: string;

@@ -581,7 +581,7 @@ export const Tasks: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                             borderColor: task.completed ? '#f1f5f9' : '#f1f5f9'
                           }}
                           exit={{ opacity: 0, scale: 0.9, y: -20 }}
-                          whileHover={task.completed ? {} : { y: -4, shadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)" }}
+                          whileHover={task.completed ? {} : { y: -4, boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)" }}
                           onClick={() => setSelectedTask(task)}
                           className={`rounded-2xl md:rounded-3xl border border-slate-100 shadow-sm flex items-stretch overflow-hidden transition-all group cursor-pointer ${
                             task.completed ? 'grayscale-[0.5]' : 'hover:border-rose-200'

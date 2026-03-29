@@ -533,7 +533,15 @@ export const WebsiteBuilder: React.FC<WebsiteBuilderProps> = ({ wedding }) => {
                     <input 
                       type="color"
                       value={website?.theme?.primaryColor || '#f43f5e'}
-                      onChange={(e) => setWebsite(prev => prev ? { ...prev, theme: { ...(prev.theme || {}), primaryColor: e.target.value } } : null)}
+                      onChange={(e) => setWebsite(prev => prev ? { 
+                        ...prev, 
+                        theme: { 
+                          primaryColor: e.target.value,
+                          secondaryColor: prev.theme?.secondaryColor || '#f8fafc',
+                          fontFamily: prev.theme?.fontFamily || 'serif',
+                          backgroundImage: prev.theme?.backgroundImage
+                        } 
+                      } : null)}
                       className="w-16 h-16 rounded-2xl border-none cursor-pointer"
                     />
                     <div className="text-sm font-mono text-slate-400 uppercase">{website?.theme?.primaryColor || '#f43f5e'}</div>
@@ -543,7 +551,15 @@ export const WebsiteBuilder: React.FC<WebsiteBuilderProps> = ({ wedding }) => {
                   <label className="block text-sm font-bold text-slate-700">Fuente</label>
                   <select
                     value={website?.theme?.fontFamily || 'serif'}
-                    onChange={(e) => setWebsite(prev => prev ? { ...prev, theme: { ...(prev.theme || {}), fontFamily: e.target.value } } : null)}
+                    onChange={(e) => setWebsite(prev => prev ? { 
+                      ...prev, 
+                      theme: { 
+                        primaryColor: prev.theme?.primaryColor || '#f43f5e',
+                        secondaryColor: prev.theme?.secondaryColor || '#f8fafc',
+                        fontFamily: e.target.value,
+                        backgroundImage: prev.theme?.backgroundImage
+                      } 
+                    } : null)}
                     className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 outline-none focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 transition-all"
                   >
                     <option value="serif">Elegante (Playfair Display)</option>

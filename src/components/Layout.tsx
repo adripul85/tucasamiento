@@ -1,7 +1,7 @@
-import React from 'react';
-import { Users, CheckSquare, Wallet, MapPin, Home, LogOut, Heart, Globe, BookOpen, Plane } from 'lucide-react';
+import React, { useState } from 'react';
+import { Users, CheckSquare, Wallet, MapPin, Home, LogOut, Heart, Globe, BookOpen, Plane, Layout as LayoutIcon, Menu, X } from 'lucide-react';
 import { auth } from '../firebase';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -10,9 +10,12 @@ interface LayoutProps {
 }
 
 export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab }) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
   const tabs = [
     { id: 'home', icon: Home, label: 'Inicio' },
     { id: 'guests', icon: Users, label: 'Invitados' },
+    { id: 'seating', icon: LayoutIcon, label: 'Mesas' },
     { id: 'tasks', icon: CheckSquare, label: 'Tareas' },
     { id: 'budget', icon: Wallet, label: 'Presupuesto' },
     { id: 'vendors', icon: MapPin, label: 'Proveedores' },
@@ -25,76 +28,106 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 md:pb-0 md:pl-64">
-      {/* Sidebar for Desktop */}
-      <aside className="hidden md:flex flex-col fixed left-0 top-0 bottom-0 w-64 bg-white border-r border-slate-200 p-6 z-20">
-        <div className="flex items-center gap-2 mb-10">
-          <div className="w-10 h-10 bg-rose-500 rounded-xl flex items-center justify-center">
-            <Home className="text-white w-6 h-6" />
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      {/* Top Navbar */}
+      <header className="sticky top-0 left-0 right-0 bg-white border-b border-slate-200 z-50 shrink-0">
+        <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="w-10 h-10 bg-rose-500 rounded-xl flex items-center justify-center">
+              <Home className="text-white w-6 h-6" />
+            </div>
+            <span className="text-xl font-serif font-bold text-slate-800 hidden sm:block">Tu Casamiento</span>
           </div>
-          <span className="text-xl font-serif font-bold text-slate-800">Tu Casamiento</span>
+
+          {/* Desktop Nav Links - Scrollable horizontally if too many */}
+          <nav className="hidden lg:flex items-center gap-1 overflow-x-auto no-scrollbar px-4 flex-1 justify-center">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'bg-rose-50 text-rose-600 font-semibold'
+                    : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                <tab.icon className="w-4 h-4" />
+                <span className="text-sm">{tab.label}</span>
+              </button>
+            ))}
+          </nav>
+
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              onClick={() => auth.signOut()}
+              className="hidden md:flex items-center gap-2 px-4 py-2 text-slate-400 hover:text-rose-500 transition-colors text-sm font-medium"
+            >
+              <LogOut className="w-4 h-4" />
+              Salir
+            </button>
+            
+            {/* Mobile Menu Toggle */}
+            <button 
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="lg:hidden p-2 text-slate-500 hover:bg-slate-50 rounded-xl transition-all"
+            >
+              {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
 
-        <nav className="flex-1 space-y-2">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                activeTab === tab.id
-                  ? 'bg-rose-50 text-rose-600 font-semibold'
-                  : 'text-slate-500 hover:bg-slate-50'
-              }`}
+        {/* Mobile/Tablet Menu Overlay */}
+        <AnimatePresence>
+          {isMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="lg:hidden bg-white border-t border-slate-100 overflow-hidden"
             >
-              <tab.icon className="w-5 h-5" />
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-
-        <button
-          onClick={() => auth.signOut()}
-          className="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-rose-500 transition-colors mt-auto"
-        >
-          <LogOut className="w-5 h-5" />
-          Cerrar Sesión
-        </button>
-      </aside>
+              <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[70vh] overflow-y-auto">
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setActiveTab(tab.id);
+                      setIsMenuOpen(false);
+                    }}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                      activeTab === tab.id
+                        ? 'bg-rose-50 text-rose-600 font-semibold'
+                        : 'text-slate-500 hover:bg-slate-50'
+                    }`}
+                  >
+                    <tab.icon className="w-5 h-5" />
+                    <span className="text-sm">{tab.label}</span>
+                  </button>
+                ))}
+                <button
+                  onClick={() => auth.signOut()}
+                  className="flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-rose-500 transition-colors col-span-full border-t border-slate-50 mt-2 pt-4"
+                >
+                  <LogOut className="w-5 h-5" />
+                  <span className="text-sm">Cerrar Sesión</span>
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </header>
 
       {/* Main Content */}
-      <main className="max-w-5xl mx-auto p-4 md:p-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-8 overflow-hidden flex flex-col">
         <motion.div
           key={activeTab}
-          initial={{ opacity: 0, x: 10 }}
-          animate={{ opacity: 1, x: 0 }}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
+          className="flex-1 flex flex-col min-h-0"
         >
           {children}
         </motion.div>
       </main>
-
-      {/* Bottom Nav for Mobile */}
-      <nav className="md:hidden fixed bottom-6 left-4 right-4 bg-white/80 backdrop-blur-xl border border-white/20 shadow-2xl rounded-3xl flex justify-around items-center p-2 z-50">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex flex-col items-center p-3 rounded-2xl transition-all ${
-              activeTab === tab.id ? 'text-rose-500 bg-rose-50' : 'text-slate-400'
-            }`}
-          >
-            <tab.icon className="w-6 h-6" />
-            <span className="text-[10px] mt-1 font-medium">{tab.label}</span>
-          </button>
-        ))}
-        <button
-          onClick={() => auth.signOut()}
-          className="flex flex-col items-center p-3 rounded-2xl transition-all text-slate-400"
-        >
-          <LogOut className="w-6 h-6" />
-          <span className="text-[10px] mt-1 font-medium">Salir</span>
-        </button>
-      </nav>
     </div>
   );
 };
