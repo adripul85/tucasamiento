@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Users, CheckSquare, Wallet, MapPin, Home, LogOut, Heart, Globe, BookOpen, Plane, Layout as LayoutIcon, Menu, X } from 'lucide-react';
+import { Users, CheckSquare, Wallet, MapPin, Home, LogOut, Heart, Globe, BookOpen, Plane, Layout as LayoutIcon, Menu, X, BrainCircuit, MessageSquare, Clock } from 'lucide-react';
 import { auth } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -14,11 +14,14 @@ export const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTa
 
   const tabs = [
     { id: 'home', icon: Home, label: 'Inicio' },
+    { id: 'ai_planner', icon: BrainCircuit, label: 'Asistente IA' },
+    { id: 'timeline', icon: Clock, label: 'Cronograma' },
     { id: 'guests', icon: Users, label: 'Invitados' },
     { id: 'seating', icon: LayoutIcon, label: 'Mesas' },
     { id: 'tasks', icon: CheckSquare, label: 'Tareas' },
     { id: 'budget', icon: Wallet, label: 'Presupuesto' },
     { id: 'vendors', icon: MapPin, label: 'Proveedores' },
+    { id: 'messages', icon: MessageSquare, label: 'Mensajes' },
     { id: 'favorites', icon: Heart, label: 'Favoritos' },
     { id: 'website', icon: Globe, label: 'Mi Web' },
     { id: 'blog', icon: BookOpen, label: 'Ideas' },

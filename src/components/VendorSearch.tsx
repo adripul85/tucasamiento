@@ -29,6 +29,7 @@ const ChangeView = ({ center, zoom }: { center: [number, number], zoom: number }
 // Vendor interface
 interface Vendor {
   id: string;
+  vendorUserId?: string; // ID of the vendor user in our platform
   name: string;
   lat?: number;
   lon?: number;
@@ -96,6 +97,7 @@ const StarRating = ({ rating, onRate, size = "w-4 h-4", interactive = false }: {
 const REAL_VENDORS: Vendor[] = [
   {
     id: 'cas-1',
+    vendorUserId: 'vendor_1',
     name: 'Tienda de Eventos',
     lat: -34.6037,
     lon: -58.3816,
@@ -114,6 +116,7 @@ const REAL_VENDORS: Vendor[] = [
   },
   {
     id: 'cas-2',
+    vendorUserId: 'vendor_2',
     name: 'Tico Cid',
     lat: -34.5837,
     lon: -58.4016,
@@ -132,6 +135,7 @@ const REAL_VENDORS: Vendor[] = [
   },
   {
     id: 'cas-3',
+    vendorUserId: 'vendor_3',
     name: 'Maisto Leiva Dúo',
     lat: -34.6137,
     lon: -58.3716,

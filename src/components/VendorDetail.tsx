@@ -30,10 +30,12 @@ interface VendorDetailProps {
     openingHours?: string;
     reviews?: { author: string; comment: string; rating: number }[];
     photos?: string[];
+    vendorUserId?: string;
   };
   onBack: () => void;
   onRate?: (rating: number) => void;
   onAddToBudget?: () => void;
+  onContact?: () => void;
   isAddingToBudget?: boolean;
 }
 
@@ -68,7 +70,7 @@ const StarRating = ({ rating, onRate, size = "w-4 h-4", interactive = false }: {
   );
 };
 
-export const VendorDetail: React.FC<VendorDetailProps> = ({ vendor, onBack, onRate, onAddToBudget, isAddingToBudget }) => {
+export const VendorDetail: React.FC<VendorDetailProps> = ({ vendor, onBack, onRate, onAddToBudget, onContact, isAddingToBudget }) => {
   const [activeTab, setActiveTab] = useState('info');
   const [isFavorite, setIsFavorite] = useState(false);
 
@@ -474,6 +476,15 @@ export const VendorDetail: React.FC<VendorDetailProps> = ({ vendor, onBack, onRa
                   <button className="w-full bg-rose-500 text-white font-bold py-5 rounded-2xl hover:bg-rose-600 transition-all shadow-xl shadow-rose-500/20 text-lg">
                     Solicitar Presupuesto
                   </button>
+                  {vendor.vendorUserId && onContact && (
+                    <button 
+                      onClick={onContact}
+                      className="w-full bg-emerald-500 text-white font-bold py-4 rounded-2xl hover:bg-emerald-600 transition-all shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2"
+                    >
+                      <MessageSquare className="w-5 h-5" />
+                      Chat en Vivo
+                    </button>
+                  )}
                   {onAddToBudget && (
                     <button 
                       onClick={onAddToBudget}

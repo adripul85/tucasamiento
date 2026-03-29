@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from './firebase';
-import { collection, query, where, onSnapshot, addDoc, limit, getDocFromServer, doc, updateDoc, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, limit, getDocFromServer, doc, updateDoc, orderBy, serverTimestamp, setDoc } from 'firebase/firestore';
 import { Wedding, Post } from './types';
 import { User } from 'firebase/auth';
 import { Layout } from './components/Layout';
@@ -17,9 +17,13 @@ import { Community } from './components/Community';
 import { FavoritesList } from './components/FavoritesList';
 import { WeddingWebsiteView } from './components/WeddingWebsiteView';
 import { SeatingChart } from './components/SeatingChart';
+import { AIPlanner } from './components/AIPlanner';
+import { Timeline } from './components/Timeline';
+import { Chat, ChatList } from './components/Chat';
 import { Auth } from './components/Auth';
 import { ProDashboard } from './components/ProDashboard';
-import { Heart, Calendar, MapPin, Settings, X, LogOut, Star, ChevronRight, MessageSquare, User as UserIcon, BookOpen, CheckSquare, Users, Calculator, ArrowRight, Share2, Utensils, Music, Globe, CheckCircle2, Layout as LayoutIcon } from 'lucide-react';
+import { Toaster } from 'sonner';
+import { Heart, Calendar, MapPin, Settings, X, LogOut, Star, ChevronRight, MessageSquare, User as UserIcon, BookOpen, CheckSquare, Users, Calculator, ArrowRight, Share2, Utensils, Music, Globe, CheckCircle2, Layout as LayoutIcon, Sun, Cloud, Leaf, Snowflake, BrainCircuit, Sparkles, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getMessagingSafe, getToken, onMessage } from './firebase';
 
@@ -385,8 +389,10 @@ const FEATURED_VENDORS = [
 const EditProfileModal: React.FC<{ wedding: Wedding; onClose: () => void }> = ({ wedding, onClose }) => {
   const [partner1, setPartner1] = useState(wedding.partner1);
   const [partner2, setPartner2] = useState(wedding.partner2);
-  const [date, setDate] = useState(wedding.date);
-  const [location, setLocation] = useState(wedding.location);
+  const [date, setDate] = useState(wedding.date || '');
+  const [location, setLocation] = useState(wedding.location || '');
+  const [guestCount, setGuestCount] = useState(wedding.guestCount || 0);
+  const [season, setSeason] = useState(wedding.season || 'spring');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
@@ -410,6 +416,8 @@ const EditProfileModal: React.FC<{ wedding: Wedding; onClose: () => void }> = ({
         partner2,
         date,
         location,
+        guestCount: Number(guestCount),
+        season,
       });
       onClose();
     } catch (error) {
@@ -433,7 +441,7 @@ const EditProfileModal: React.FC<{ wedding: Wedding; onClose: () => void }> = ({
           </button>
         </div>
         
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Pareja 1</label>
@@ -478,7 +486,7 @@ const EditProfileModal: React.FC<{ wedding: Wedding; onClose: () => void }> = ({
             {errors.date && <p className="text-[10px] text-rose-500 font-bold mt-1 ml-1">{errors.date}</p>}
           </div>
           <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Ubicación</label>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Ubicación (Argentina)</label>
             <input 
               type="text" 
               value={location}
@@ -487,9 +495,34 @@ const EditProfileModal: React.FC<{ wedding: Wedding; onClose: () => void }> = ({
                 if (errors.location) setErrors(prev => ({ ...prev, location: '' }));
               }}
               className={`w-full px-4 py-3 rounded-2xl bg-slate-50 border-2 transition-all ${errors.location ? 'border-rose-500 ring-2 ring-rose-500/10' : 'border-transparent focus:ring-2 focus:ring-rose-500/20'}`}
-              placeholder="Ej: Ciudad de México"
+              placeholder="Ej: Mendoza, Buenos Aires, Salta..."
             />
             {errors.location && <p className="text-[10px] text-rose-500 font-bold mt-1 ml-1">{errors.location}</p>}
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Invitados</label>
+              <input 
+                type="number" 
+                value={guestCount}
+                onChange={(e) => setGuestCount(Number(e.target.value))}
+                className="w-full px-4 py-3 rounded-2xl bg-slate-50 border-2 border-transparent focus:ring-2 focus:ring-rose-500/20 transition-all"
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Época del Año</label>
+              <select 
+                value={season}
+                onChange={(e) => setSeason(e.target.value as any)}
+                className="w-full px-4 py-3 rounded-2xl bg-slate-50 border-2 border-transparent focus:ring-2 focus:ring-rose-500/20 transition-all appearance-none"
+              >
+                <option value="spring">Primavera</option>
+                <option value="summer">Verano</option>
+                <option value="autumn">Otoño</option>
+                <option value="winter">Invierno</option>
+              </select>
+            </div>
           </div>
         </div>
         
@@ -520,7 +553,8 @@ const Dashboard: React.FC<{ wedding: Wedding; setActiveTab: (tab: string) => voi
     tasks: { completed: 0, total: 0 },
     guests: { confirmed: 0, total: 0 },
     budget: { spent: 0, total: 0 },
-    tables: 0
+    tables: 0,
+    timeline: 0
   });
 
   useEffect(() => {
@@ -586,12 +620,22 @@ const Dashboard: React.FC<{ wedding: Wedding; setActiveTab: (tab: string) => voi
         }));
       }
     );
+    
+    // Fetch Timeline
+    const timelineUnsubscribe = onSnapshot(
+      collection(db, `weddings/${wedding.id}/timeline`),
+      (snapshot) => {
+        setStats(prev => ({ ...prev, timeline: snapshot.size }));
+      }
+    );
 
     return () => {
       vendorsUnsubscribe();
       tasksUnsubscribe();
       guestsUnsubscribe();
       budgetUnsubscribe();
+      tablesUnsubscribe();
+      timelineUnsubscribe();
     };
   }, [wedding.id]);
 
@@ -627,6 +671,25 @@ const Dashboard: React.FC<{ wedding: Wedding; setActiveTab: (tab: string) => voi
                   <MapPin className="w-4 h-4" />
                   {wedding.location || 'Ubicación por definir'}
                 </div>
+                {wedding.guestCount && (
+                  <div className="flex items-center gap-1">
+                    <Users className="w-4 h-4" />
+                    {wedding.guestCount} invitados
+                  </div>
+                )}
+                {wedding.season && (
+                  <div className="flex items-center gap-1">
+                    {wedding.season === 'summer' && <Sun className="w-4 h-4" />}
+                    {wedding.season === 'autumn' && <Leaf className="w-4 h-4" />}
+                    {wedding.season === 'winter' && <Snowflake className="w-4 h-4" />}
+                    {wedding.season === 'spring' && <Cloud className="w-4 h-4" />}
+                    <span className="capitalize">
+                      {wedding.season === 'spring' ? 'Primavera' : 
+                       wedding.season === 'summer' ? 'Verano' : 
+                       wedding.season === 'autumn' ? 'Otoño' : 'Invierno'}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -657,7 +720,7 @@ const Dashboard: React.FC<{ wedding: Wedding; setActiveTab: (tab: string) => voi
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <motion.button
               whileHover={{ y: -4 }}
               onClick={() => setActiveTab('vendors')}
@@ -717,6 +780,18 @@ const Dashboard: React.FC<{ wedding: Wedding; setActiveTab: (tab: string) => voi
               <div className="text-2xl font-bold text-slate-800">${stats.budget.spent.toLocaleString()}</div>
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Presupuesto</div>
             </motion.button>
+
+            <motion.button
+              whileHover={{ y: -4 }}
+              onClick={() => setActiveTab('timeline')}
+              className="bg-white p-6 rounded-[32px] border border-slate-100 shadow-sm text-left group"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-500 mb-4 group-hover:scale-110 transition-transform">
+                <Clock className="w-6 h-6" />
+              </div>
+              <div className="text-2xl font-bold text-slate-800">{stats.timeline}</div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cronograma</div>
+            </motion.button>
           </div>
 
           {/* Featured Vendors */}
@@ -761,6 +836,27 @@ const Dashboard: React.FC<{ wedding: Wedding; setActiveTab: (tab: string) => voi
 
         {/* Right Column: Tips & Next Steps */}
         <div className="space-y-8">
+          <div className="bg-indigo-600 p-8 rounded-[40px] text-white space-y-6 relative overflow-hidden">
+            <div className="absolute -right-8 -top-8 w-32 h-32 bg-white/10 rounded-full blur-2xl" />
+            <div className="absolute -left-8 -bottom-8 w-32 h-32 bg-black/10 rounded-full blur-2xl" />
+            
+            <div className="relative">
+              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-4 backdrop-blur-md">
+                <BrainCircuit className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-serif font-bold mb-2">Planificador Inteligente</h3>
+              <p className="text-indigo-100 text-sm leading-relaxed">
+                Deja que nuestra IA te haga las preguntas clave y genere el informe maestro para tu boda en Argentina.
+              </p>
+              <button 
+                onClick={() => setActiveTab('ai_planner')}
+                className="mt-6 w-full py-4 bg-white text-indigo-600 font-bold rounded-2xl hover:bg-indigo-50 transition-all shadow-xl shadow-black/10 flex items-center justify-center gap-2"
+              >
+                Comenzar Entrevista <Sparkles className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
           <div className="bg-rose-500 p-8 rounded-[40px] text-white space-y-6 relative overflow-hidden">
             <div className="absolute -right-8 -top-8 w-32 h-32 bg-white/10 rounded-full blur-2xl" />
             <div className="absolute -left-8 -bottom-8 w-32 h-32 bg-black/10 rounded-full blur-2xl" />
@@ -819,21 +915,24 @@ const CreateWedding: React.FC<{ user: User }> = ({ user }) => {
   const [p1, setP1] = useState('');
   const [p2, setP2] = useState('');
   const [date, setDate] = useState('');
+  const [location, setLocation] = useState('');
+  const [guestCount, setGuestCount] = useState('');
+  const [season, setSeason] = useState('spring');
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!p1 || !p2) return;
     try {
-      const weddingRef = await addDoc(collection(db, 'weddings'), {
+      await addDoc(collection(db, 'weddings'), {
         userId: user.uid,
         partner1: p1,
         partner2: p2,
         date: date || null,
+        location: location || null,
+        guestCount: guestCount ? Number(guestCount) : null,
+        season: season,
         createdAt: new Date().toISOString()
       });
-
-      // Task pre-loading is now handled automatically by the Tasks component
-      // when it detects an empty task list for a wedding.
 
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'weddings');
@@ -850,40 +949,77 @@ const CreateWedding: React.FC<{ user: User }> = ({ user }) => {
         <div className="text-center space-y-2">
           <Heart className="w-12 h-12 text-rose-500 mx-auto" />
           <h2 className="text-3xl font-serif font-bold text-slate-800">Crea tu Boda</h2>
-          <p className="text-slate-500">Ingresa los detalles de su gran día para comenzar.</p>
+          <p className="text-slate-500 text-sm">Ingresa los detalles básicos para comenzar.</p>
         </div>
 
-        <form onSubmit={create} className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Pareja 1</label>
-            <input
-              type="text"
-              value={p1}
-              onChange={(e) => setP1(e.target.value)}
-              placeholder="Nombre"
-              className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all"
-            />
+        <form onSubmit={create} className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Pareja 1</label>
+              <input
+                type="text"
+                value={p1}
+                onChange={(e) => setP1(e.target.value)}
+                placeholder="Nombre"
+                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-rose-500 transition-all text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Pareja 2</label>
+              <input
+                type="text"
+                value={p2}
+                onChange={(e) => setP2(e.target.value)}
+                placeholder="Nombre"
+                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-rose-500 transition-all text-sm"
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Pareja 2</label>
-            <input
-              type="text"
-              value={p2}
-              onChange={(e) => setP2(e.target.value)}
-              placeholder="Nombre"
-              className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Fecha de la Boda</label>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Fecha de la Boda</label>
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 outline-none focus:ring-2 focus:ring-rose-500 transition-all"
+              className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-rose-500 transition-all text-sm"
             />
           </div>
-          <button type="submit" className="w-full bg-rose-500 text-white font-bold py-5 rounded-2xl hover:bg-rose-600 transition-all shadow-xl shadow-rose-100 mt-4">
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Ubicación (Argentina)</label>
+            <input
+              type="text"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="Ej: Mendoza, Buenos Aires..."
+              className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-rose-500 transition-all text-sm"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Invitados</label>
+              <input
+                type="number"
+                value={guestCount}
+                onChange={(e) => setGuestCount(e.target.value)}
+                placeholder="0"
+                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-rose-500 transition-all text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Época</label>
+              <select
+                value={season}
+                onChange={(e) => setSeason(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-rose-500 transition-all text-sm appearance-none"
+              >
+                <option value="spring">Primavera</option>
+                <option value="summer">Verano</option>
+                <option value="autumn">Otoño</option>
+                <option value="winter">Invierno</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" className="w-full bg-rose-500 text-white font-bold py-4 rounded-2xl hover:bg-rose-600 transition-all shadow-xl shadow-rose-100 mt-4">
             Comenzar a Planificar
           </button>
         </form>
@@ -897,6 +1033,7 @@ const WeddingManager: React.FC<{ user: User }> = ({ user }) => {
   const [wedding, setWedding] = useState<Wedding | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedVendor, setSelectedVendor] = useState<any>(null);
+  const [selectedChat, setSelectedChat] = useState<any>(null);
   const [favorites, setFavorites] = useState<any[]>([]);
   const [addingToBudget, setAddingToBudget] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -1027,8 +1164,30 @@ const WeddingManager: React.FC<{ user: User }> = ({ user }) => {
           onBack={() => setSelectedVendor(null)} 
           onRate={(r) => handleRateVendor(selectedVendor, r)}
           onAddToBudget={() => handleAddToBudget(selectedVendor)}
+          onContact={() => handleContactVendor(selectedVendor)}
           isAddingToBudget={addingToBudget === selectedVendor.id}
         />
+      );
+    }
+
+    if (activeTab === 'messages') {
+      return (
+        <div className="h-[calc(100vh-12rem)]">
+          {selectedChat ? (
+            <Chat 
+              chatId={selectedChat.id} 
+              currentUserId={user.uid} 
+              otherPartyName={user.uid === selectedChat.vendorUserId ? selectedChat.coupleName : selectedChat.vendorName}
+              onBack={() => setSelectedChat(null)}
+            />
+          ) : (
+            <ChatList 
+              currentUserId={user.uid} 
+              onSelectChat={(chat) => setSelectedChat(chat)}
+              isVendor={false} // Couples are always couples here
+            />
+          )}
+        </div>
       );
     }
 
@@ -1037,7 +1196,9 @@ const WeddingManager: React.FC<{ user: User }> = ({ user }) => {
       case 'guests': return <GuestList weddingId={wedding.id} />;
       case 'seating': return <SeatingChart weddingId={wedding.id} />;
       case 'tasks': return <Tasks weddingId={wedding.id} />;
-      case 'budget': return <Budget weddingId={wedding.id} />;
+      case 'timeline': return <Timeline weddingId={wedding.id} />;
+      case 'ai_planner': return <AIPlanner wedding={wedding} />;
+      case 'budget': return <Budget wedding={wedding} />;
       case 'vendors': return <VendorSearch weddingId={wedding.id} onSelectVendor={setSelectedVendor} />;
       case 'favorites': return <FavoritesList weddingId={wedding.id} onSelectVendor={setSelectedVendor} />;
       case 'website': return <WebsiteBuilder wedding={wedding} />;
@@ -1046,6 +1207,47 @@ const WeddingManager: React.FC<{ user: User }> = ({ user }) => {
       case 'honeymoon': return <Honeymoon wedding={wedding} />;
       case 'rsvp': return <RSVPForm weddingId={wedding.id} />;
       default: return <Dashboard wedding={wedding} setActiveTab={setActiveTab} />;
+    }
+  };
+
+  const handleContactVendor = async (vendor: any) => {
+    if (!user || !wedding || !vendor.vendorUserId) return;
+
+    // Check if chat already exists
+    const q = query(
+      collection(db, 'chats'),
+      where('coupleId', '==', user.uid),
+      where('vendorUserId', '==', vendor.vendorUserId),
+      limit(1)
+    );
+
+    try {
+      const snapshot = await getDocFromServer(doc(db, 'chats', `${user.uid}_${vendor.vendorUserId}`));
+      let chatId = `${user.uid}_${vendor.vendorUserId}`;
+      
+      if (!snapshot.exists()) {
+        // Create new chat
+        const newChat = {
+          weddingId: wedding.id,
+          coupleId: user.uid,
+          coupleName: `${wedding.partner1} & ${wedding.partner2}`,
+          vendorUserId: vendor.vendorUserId,
+          vendorName: vendor.name,
+          vendorCategory: vendor.category,
+          lastMessage: '',
+          lastMessageAt: serverTimestamp(),
+          createdAt: serverTimestamp()
+        };
+        await setDoc(doc(db, 'chats', chatId), newChat);
+        setSelectedChat({ id: chatId, ...newChat });
+      } else {
+        setSelectedChat({ id: chatId, ...snapshot.data() });
+      }
+      
+      setActiveTab('messages');
+      setSelectedVendor(null);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'chats');
     }
   };
 
@@ -1114,6 +1316,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+      <Toaster position="top-center" richColors />
       <Auth onLoginPro={() => setUserType('vendor')}>
         {(user) => (
           userType === 'vendor' 

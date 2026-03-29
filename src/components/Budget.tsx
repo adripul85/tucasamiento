@@ -2,13 +2,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase';
 import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../App';
-import { BudgetItem, Payment } from '../types';
+import { BudgetItem, Payment, Wedding } from '../types';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import { 
   Plus, Trash2, PieChart as PieChartIcon, DollarSign, TrendingUp, AlertCircle, 
   ChevronRight, Download, Printer, Church, Utensils, Music, Mail, Gift, 
   Flower2, Camera, Bus, Gem, User, Sparkles, Plane, MoreHorizontal, PiggyBank, Coins,
-  Search, ArrowUpDown, Calendar, CreditCard, History, Zap, BrainCircuit, Loader2, XCircle
+  Search, ArrowUpDown, Calendar, CreditCard, History, Zap, BrainCircuit, Loader2, XCircle, Copy
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
@@ -16,6 +16,8 @@ import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { GoogleGenAI, Type } from "@google/genai";
+import ReactMarkdown from 'react-markdown';
+import { toast } from 'sonner';
 
 const COLORS = ['#f43f5e', '#ec4899', '#d946ef', '#a855f7', '#8b5cf6', '#6366f1', '#3b82f6', '#0ea5e9', '#f59e0b', '#10b981', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6'];
 
@@ -109,7 +111,8 @@ const SUGGESTED_ITEMS: Record<string, { name: string; estimated: number }[]> = {
   ],
 };
 
-export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
+export const Budget: React.FC<{ wedding: Wedding }> = ({ wedding }) => {
+  const weddingId = wedding.id;
   const [items, setItems] = useState<BudgetItem[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [name, setName] = useState('');
@@ -132,6 +135,7 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
   const [paymentSort, setPaymentSort] = useState<{ field: keyof Payment; direction: 'asc' | 'desc' }>({ field: 'date', direction: 'desc' });
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiRecommendations, setAiRecommendations] = useState<string | null>(null);
+  const [aiTitle, setAiTitle] = useState('Recomendaciones IA');
   const [showAiModal, setShowAiModal] = useState(false);
 
   useEffect(() => {
@@ -423,12 +427,27 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
 
   const getAiAdvice = async () => {
     setIsAiLoading(true);
+    setAiTitle('Consejos de Optimización');
+    setAiRecommendations(null);
     setShowAiModal(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      
+      const context = `
+        Detalles de la Boda:
+        - Pareja: ${wedding.partner1} & ${wedding.partner2}
+        - Fecha: ${wedding.date || 'No definida'}
+        - Ubicación: ${wedding.location || 'No definida'} (Argentina)
+        - Cantidad de Invitados: ${wedding.guestCount || 'No definida'}
+        - Época del Año: ${wedding.season || 'No definida'}
+      `;
+
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `Actúa como un experto planificador de bodas. Analiza mi presupuesto actual y dame consejos para optimizarlo.
+        contents: `Actúa como un experto planificador de bodas en Argentina. Analiza mi presupuesto actual y dame consejos para optimizarlo.
+        
+        ${context}
+        
         Presupuesto Objetivo: $${targetBudget}
         Total Estimado Actual: $${totalEstimated}
         Total Pagado: $${totalPaid}
@@ -436,7 +455,10 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
         Gastos actuales:
         ${items.map(i => `- ${i.name} (${i.category}): $${i.estimated}`).join('\n')}
         
-        Dame 3-5 consejos específicos, realistas y accionables para ahorrar o redistribuir mejor el dinero en base a estos datos. Responde en español y con un tono amable y profesional.`,
+        Dame 3-5 consejos específicos, realistas y accionables para ahorrar o redistribuir mejor el dinero en base a estos datos. 
+        Ten en cuenta especialmente la ubicación para consejos sobre transporte y la época del año para logística y clima.
+        Usa un formato de lista con emojis, negritas para resaltar puntos clave y una estructura clara.
+        Responde en español y con un tono amable y profesional.`,
       });
       setAiRecommendations(response.text);
     } catch (error) {
@@ -444,6 +466,64 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
       setAiRecommendations('Lo siento, no pude generar recomendaciones en este momento. Por favor, intenta más tarde.');
     } finally {
       setIsAiLoading(false);
+    }
+  };
+
+  const getBudgetDistribution = async () => {
+    if (targetBudget <= 0) {
+      alert('Por favor, define primero un presupuesto objetivo mayor a 0.');
+      return;
+    }
+
+    setIsAiLoading(true);
+    setAiTitle('Planificación de Presupuesto');
+    setAiRecommendations(null);
+    setShowAiModal(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      
+      const context = `
+        Detalles de la Boda:
+        - Ubicación: ${wedding.location || 'No definida'} (Argentina)
+        - Cantidad de Invitados: ${wedding.guestCount || 'No definida'}
+        - Época del Año: ${wedding.season || 'No definida'}
+      `;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Actúa como un experto planificador de bodas de lujo y eventos sociales en Argentina. 
+        Mi presupuesto total para la boda es de $${targetBudget}. 
+        
+        ${context}
+        
+        Necesito que sugieras una distribución ideal de este dinero entre las siguientes categorías: 
+        ${CATEGORIES.map(c => c.name).join(', ')}.
+        
+        Basate en promedios del mercado actual de Argentina. 
+        Considera la cantidad de invitados para el catering y la ubicación para el transporte.
+        Para cada categoría, proporciona:
+        1. El porcentaje sugerido del total.
+        2. El monto en dinero ($).
+        3. Una breve explicación de qué suele incluir ese gasto en este nivel de presupuesto.
+        
+        Usa un formato de tabla Markdown para el desglose y luego una lista de puntos clave.
+        Incluye emojis relevantes para cada categoría.
+        Al final, dame un consejo clave para no excederse del presupuesto total.
+        Responde en español, con un formato visualmente atractivo, profesional y alentador.`,
+      });
+      setAiRecommendations(response.text);
+    } catch (error) {
+      console.error('AI Error:', error);
+      setAiRecommendations('Hubo un error al calcular la distribución. Por favor, intenta de nuevo.');
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const copyAiAdvice = () => {
+    if (aiRecommendations) {
+      navigator.clipboard.writeText(aiRecommendations);
+      toast.success('Recomendaciones copiadas al portapapeles');
     }
   };
 
@@ -567,19 +647,30 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                 </div>
                 <div className="space-y-1">
                   <div className="text-[10px] text-slate-400 uppercase tracking-[0.2em] font-black">Presupuesto Objetivo</div>
-                  {isEditingTarget ? (
-                    <input
-                      type="number"
-                      autoFocus
-                      className="text-4xl font-bold text-slate-800 text-center w-full bg-transparent border-b-2 border-rose-200 outline-none"
-                      value={targetBudget}
-                      onChange={(e) => setTargetBudget(Number(e.target.value))}
-                      onBlur={handleSaveTargetBudget}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSaveTargetBudget()}
-                    />
-                  ) : (
-                    <div className="text-4xl font-bold text-slate-800">${targetBudget.toLocaleString()}</div>
-                  )}
+                  <div className="flex items-center justify-center gap-2">
+                    {isEditingTarget ? (
+                      <input
+                        type="number"
+                        autoFocus
+                        className="text-4xl font-bold text-slate-800 text-center w-full bg-transparent border-b-2 border-rose-200 outline-none"
+                        value={targetBudget}
+                        onChange={(e) => setTargetBudget(Number(e.target.value))}
+                        onBlur={handleSaveTargetBudget}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSaveTargetBudget()}
+                      />
+                    ) : (
+                      <div className="text-4xl font-bold text-slate-800">${targetBudget.toLocaleString()}</div>
+                    )}
+                    {!isEditingTarget && (
+                      <button 
+                        onClick={getBudgetDistribution}
+                        className="p-2 text-indigo-500 hover:bg-indigo-50 rounded-full transition-all"
+                        title="Sugerir distribución con IA"
+                      >
+                        <BrainCircuit className="w-5 h-5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <button 
                   onClick={() => setIsEditingTarget(true)}
@@ -1296,7 +1387,7 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                       <BrainCircuit className="w-6 h-6" />
                     </div>
                     <div>
-                      <h3 className="text-2xl font-serif font-bold text-slate-800">Recomendaciones IA</h3>
+                      <h3 className="text-2xl font-serif font-bold text-slate-800">{aiTitle}</h3>
                       <p className="text-sm text-slate-500">Análisis inteligente de tu presupuesto</p>
                     </div>
                   </div>
@@ -1305,27 +1396,69 @@ export const Budget: React.FC<{ weddingId: string }> = ({ weddingId }) => {
                   </button>
                 </div>
 
-                <div className="p-8 bg-slate-50 rounded-[32px] min-h-[300px] flex flex-col">
+                <div className="p-8 bg-slate-50 rounded-[32px] min-h-[300px] flex flex-col overflow-y-auto max-h-[60vh]">
                   {isAiLoading ? (
                     <div className="flex-1 flex flex-col items-center justify-center space-y-4 text-slate-400">
                       <Loader2 className="w-12 h-12 animate-spin text-indigo-500" />
                       <p className="font-medium animate-pulse">Analizando tus gastos...</p>
                     </div>
                   ) : (
-                    <div className="prose prose-slate max-w-none">
-                      <div className="whitespace-pre-wrap text-slate-700 leading-relaxed">
-                        {aiRecommendations}
-                      </div>
+                    <div className="prose prose-slate prose-sm md:prose-base max-w-none">
+                      <ReactMarkdown
+                        components={{
+                          table: ({ children }) => (
+                            <div className="overflow-x-auto my-4 rounded-2xl border border-slate-200">
+                              <table className="w-full text-sm text-left border-collapse">
+                                {children}
+                              </table>
+                            </div>
+                          ),
+                          thead: ({ children }) => (
+                            <thead className="bg-slate-100 text-slate-700 font-bold">
+                              {children}
+                            </thead>
+                          ),
+                          th: ({ children }) => (
+                            <th className="px-4 py-3 border-b border-slate-200">
+                              {children}
+                            </th>
+                          ),
+                          td: ({ children }) => (
+                            <td className="px-4 py-3 border-b border-slate-100 text-slate-600">
+                              {children}
+                            </td>
+                          ),
+                          h1: ({ children }) => <h1 className="text-xl font-bold text-slate-800 mt-6 mb-4">{children}</h1>,
+                          h2: ({ children }) => <h2 className="text-lg font-bold text-slate-800 mt-6 mb-3">{children}</h2>,
+                          h3: ({ children }) => <h3 className="text-base font-bold text-slate-800 mt-4 mb-2">{children}</h3>,
+                          p: ({ children }) => <p className="text-slate-600 leading-relaxed mb-4">{children}</p>,
+                          ul: ({ children }) => <ul className="list-disc pl-5 space-y-2 mb-4">{children}</ul>,
+                          ol: ({ children }) => <ol className="list-decimal pl-5 space-y-2 mb-4">{children}</ol>,
+                          li: ({ children }) => <li className="text-slate-600">{children}</li>,
+                          strong: ({ children }) => <strong className="font-bold text-slate-900">{children}</strong>,
+                        }}
+                      >
+                        {aiRecommendations || ''}
+                      </ReactMarkdown>
                     </div>
                   )}
                 </div>
 
-                <button 
-                  onClick={() => setShowAiModal(false)}
-                  className="w-full py-4 bg-slate-800 text-white font-bold rounded-2xl hover:bg-slate-900 transition-all"
-                >
-                  Entendido
-                </button>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={copyAiAdvice}
+                    className="flex-1 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Copy className="w-5 h-5" />
+                    Copiar
+                  </button>
+                  <button 
+                    onClick={() => setShowAiModal(false)}
+                    className="flex-[2] py-4 bg-slate-800 text-white font-bold rounded-2xl hover:bg-slate-900 transition-all shadow-lg shadow-slate-200"
+                  >
+                    Entendido
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

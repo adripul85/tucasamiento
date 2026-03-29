@@ -6,6 +6,9 @@ export interface Wedding {
   date?: string;
   budget?: number;
   location?: string;
+  guestCount?: number;
+  season?: 'summer' | 'autumn' | 'winter' | 'spring';
+  aiReport?: string;
 }
 
 export interface Guest {
@@ -126,5 +129,36 @@ export interface UserProfile {
   uid: string;
   displayName: string;
   photoURL?: string;
-  role: 'user' | 'admin';
+  role: 'user' | 'admin' | 'vendor';
+}
+
+export interface Chat {
+  id: string;
+  weddingId: string;
+  vendorId: string;
+  coupleName: string;
+  vendorName: string;
+  lastMessage?: string;
+  lastMessageAt?: string;
+  coupleId: string; // User ID of the couple
+  vendorUserId: string; // User ID of the vendor
+}
+
+export interface Message {
+  id: string;
+  chatId: string;
+  senderId: string;
+  text: string;
+  createdAt: string;
+}
+
+export interface TimelineEvent {
+  id: string;
+  weddingId: string;
+  time: string;
+  title: string;
+  description?: string;
+  location?: string;
+  notify: boolean;
+  notified?: boolean;
 }

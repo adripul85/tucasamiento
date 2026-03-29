@@ -25,7 +25,8 @@ import {
   X,
   Check,
   Sparkles,
-  Menu
+  Menu,
+  ArrowLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -33,6 +34,7 @@ import { User as FirebaseUser } from 'firebase/auth';
 
 import { db, handleFirestoreError, OperationType } from '../App';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { Chat, ChatList } from './Chat';
 
 interface ProDashboardProps {
   user: FirebaseUser;
@@ -43,6 +45,7 @@ export const ProDashboard: React.FC<ProDashboardProps> = ({ user, onNavigate }) 
   const [activeTab, setActiveTab] = useState('overview');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [selectedChat, setSelectedChat] = useState<any>(null);
   const [vendor, setVendor] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -232,7 +235,26 @@ export const ProDashboard: React.FC<ProDashboardProps> = ({ user, onNavigate }) 
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto">
-        {/* Secondary Header (Search & Notifications) */}
+        {activeTab === 'messages' ? (
+          <div className="p-6 md:p-10 h-[calc(100vh-12rem)]">
+            {selectedChat ? (
+              <Chat 
+                chatId={selectedChat.id} 
+                currentUserId={user.uid} 
+                otherPartyName={selectedChat.coupleName}
+                onBack={() => setSelectedChat(null)}
+              />
+            ) : (
+              <ChatList 
+                currentUserId={user.uid} 
+                onSelectChat={(chat) => setSelectedChat(chat)}
+                isVendor={true}
+              />
+            )}
+          </div>
+        ) : (
+          <>
+            {/* Secondary Header (Search & Notifications) */}
         <div className="px-6 py-4 flex items-center justify-between bg-white/50 backdrop-blur-sm border-b border-slate-100">
           <div className="relative hidden sm:block w-96">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -465,7 +487,9 @@ export const ProDashboard: React.FC<ProDashboardProps> = ({ user, onNavigate }) 
             </div>
           </div>
         </div>
-      </main>
+      </>
+      )}
+    </main>
 
       {/* Edit Profile Modal (Simple version) */}
       <AnimatePresence>
